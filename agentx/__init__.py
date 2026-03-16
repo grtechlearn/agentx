@@ -5,19 +5,21 @@ Build production-ready, secure, cost-optimized AI agent systems.
 Features:
 - Multi-Agent Orchestration (routing, pipelines, parallel execution)
 - Advanced RAG (hybrid BM25+semantic search, cross-encoder re-ranking, query rewrite)
-- Data Pipeline (ingestion, PII detection, validation)
+- Data Pipeline (ingestion, PII detection, validation, knowledge freshness)
 - Security & RBAC (JWT auth, injection guard, role-based access, audit logging)
-- Evaluation (RAGAS metrics, hallucination detection, MRR, nDCG)
-- Prompt Engineering (templates, context management, semantic caching)
-- Self-Learning (reduce LLM dependency over time)
-- Cost Management (model routing, budgets, tracking)
+- Evaluation (RAGAS metrics, hallucination guard, MRR, nDCG, grounding enforcement)
+- Prompt Engineering (templates, accurate tokenization, context management)
+- Self-Learning (reduce LLM dependency, fine-tune pipeline, training data export)
+- Cost Management (model routing, budgets, semantic cache, tracking)
 - Scaling & Latency (circuit breaker, task queue, latency budgets)
 - Distributed Tracing (OpenTelemetry compatible)
 - Vector Stores (Qdrant, Chroma, Pinecone + local embeddings)
+- Data Governance (retention enforcement, GDPR deletion, PII masking at query time)
+- Citation Management (source reliability scoring, formatted citations)
 - MCP Support (connect to any MCP tool server)
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # --- Core ---
 from .core import (
@@ -47,7 +49,14 @@ from .config import LLMConfig as LLMLayerSetup, LLMLayerConfig
 from .app import AgentXApp
 
 # --- Pipeline ---
-from .pipeline import IngestionPipeline, PIIDetector, DataValidator, DataCleaner, FileLoader
+from .pipeline import (
+    IngestionPipeline, PIIDetector, DataValidator, DataCleaner, FileLoader,
+    KnowledgeFreshnessManager, KnowledgeSource,
+    RetentionEnforcer, RetentionPolicy,
+    FineTunePipeline, FineTuneConfig, FineTuneSample,
+    RuntimePIIMasker,
+    CitationManager, SourceReliability,
+)
 
 # --- Security ---
 from .security import (
@@ -59,6 +68,7 @@ from .security import (
 from .evaluation import (
     ResponseEvaluator, HallucinationDetector, CostTracker, EvaluationResult,
     RAGASEvaluator, RAGASResult, QueryAnalytics,
+    HallucinationGuard, GroundingConfig, GroundedResponse,
 )
 
 # --- Prompts ---
@@ -106,12 +116,18 @@ __all__ = [
     "AgentXApp",
     # Pipeline
     "IngestionPipeline", "PIIDetector", "DataValidator", "DataCleaner", "FileLoader",
+    "KnowledgeFreshnessManager", "KnowledgeSource",
+    "RetentionEnforcer", "RetentionPolicy",
+    "FineTunePipeline", "FineTuneConfig", "FineTuneSample",
+    "RuntimePIIMasker",
+    "CitationManager", "SourceReliability",
     # Security
     "RBACManager", "User", "Role", "Permission",
     "AuthGateway", "AuthResult", "InjectionGuard", "InjectionResult", "NamespaceManager", "JWTToken",
     # Evaluation
     "ResponseEvaluator", "HallucinationDetector", "CostTracker", "EvaluationResult",
     "RAGASEvaluator", "RAGASResult", "QueryAnalytics",
+    "HallucinationGuard", "GroundingConfig", "GroundedResponse",
     # Prompts
     "PromptTemplate", "PromptManager", "ContextManager", "ResponseCache",
     # Scaling

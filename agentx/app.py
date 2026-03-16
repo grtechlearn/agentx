@@ -43,7 +43,12 @@ from .core.orchestrator import Orchestrator
 from .db import Database, create_database
 from .evaluation.metrics import CostTracker
 from .evaluation.ragas import RAGASEvaluator, QueryAnalytics
+from .evaluation.guardrails import HallucinationGuard, GroundingConfig
 from .memory.store import AgentMemory
+from .pipeline.knowledge import (
+    KnowledgeFreshnessManager, RetentionEnforcer, RetentionPolicy,
+    FineTunePipeline, RuntimePIIMasker, CitationManager,
+)
 from .prompts.manager import PromptManager
 from .scaling.optimizer import SelfLearner, ModelRouter
 from .scaling.tracing import Tracer, CircuitBreaker, TaskQueue, HealthCheck, LatencyBudget
@@ -75,6 +80,12 @@ class AgentXApp:
     - Health Checks (readiness and liveness probes)
     - Query Analytics (miss rates, feedback loops)
     - RAGAS Evaluator (retrieval quality metrics)
+    - Hallucination Guard (runtime grounding enforcement)
+    - Knowledge Freshness Manager (stale detection, auto-refresh)
+    - Retention Enforcer (GDPR compliance, data lifecycle)
+    - Fine-Tune Pipeline (training data collection → export)
+    - Runtime PII Masker (mask PII before sending to LLM)
+    - Citation Manager (source reliability scoring)
     """
 
     def __init__(self, config: AgentXConfig | None = None):
@@ -99,6 +110,12 @@ class AgentXApp:
         self.health: HealthCheck | None = None
         self.analytics: QueryAnalytics | None = None
         self.evaluator: RAGASEvaluator | None = None
+        self.hallucination_guard: HallucinationGuard | None = None
+        self.knowledge: KnowledgeFreshnessManager | None = None
+        self.retention: RetentionEnforcer | None = None
+        self.finetune: FineTunePipeline | None = None
+        self.pii_masker: RuntimePIIMasker | None = None
+        self.citations: CitationManager | None = None
 
         # LLM provider cache — lazily created per layer
         self._llm_cache: dict[str, BaseLLMProvider] = {}
@@ -178,6 +195,40 @@ class AgentXApp:
 
         # 15. RAGAS Evaluator
         self.evaluator = RAGASEvaluator()
+
+        # 16. Hallucination Guard (runtime grounding enforcement)
+        self.hallucination_guard = HallucinationGuard(config=GroundingConfig(
+            max_hallucination_tolerance=self.config.metrics.max_hallucination_tolerance,
+            min_confidence=self.config.metrics.min_answer_confidence,
+        ))
+
+        # 17. Knowledge Freshness Manager
+        self.knowledge = KnowledgeFreshnessManager(
+            stale_warning_days=self.config.governance.stale_data_warning_days
+            if hasattr(self.config.governance, 'stale_data_warning_days') else 30,
+            db=self.db,
+        )
+
+        # 18. Data Retention Enforcer
+        self.retention = RetentionEnforcer(
+            policy=RetentionPolicy(
+                conversations_days=self.config.governance.conversation_retention_days,
+                allow_deletion=self.config.governance.allow_data_deletion,
+            ),
+            db=self.db,
+        )
+
+        # 19. Fine-Tune Pipeline
+        self.finetune = FineTunePipeline(db=self.db)
+
+        # 20. Runtime PII Masker
+        self.pii_masker = RuntimePIIMasker(
+            fields=self.config.governance.pii_fields_to_redact
+            if self.config.governance.detect_pii else [],
+        )
+
+        # 21. Citation Manager
+        self.citations = CitationManager()
 
         self._started = True
         logger.info(f"{self.config.app_name} started successfully")
@@ -274,6 +325,12 @@ class AgentXApp:
                 "health_checks": True,
                 "ragas_evaluation": True,
                 "query_analytics": True,
+                "hallucination_guard": True,
+                "knowledge_freshness": True,
+                "data_retention": True,
+                "finetune_pipeline": True,
+                "runtime_pii_masking": self.config.governance.detect_pii,
+                "citation_management": True,
             },
         }
 

@@ -155,20 +155,57 @@ class ContextManager:
     Manage LLM context window efficiently.
 
     Handles:
-    - Token counting (approximate)
+    - Token counting (accurate via tiktoken, fallback to estimation)
     - Context truncation strategies
     - Priority-based message selection
     - System prompt + RAG context + conversation fitting
+    - Dynamic budget adjustment based on content importance
     """
 
-    # Approximate tokens per character (conservative)
+    # Approximate tokens per character (conservative fallback)
     CHARS_PER_TOKEN = 4
 
-    def __init__(self, max_context_tokens: int = 100000):
+    def __init__(self, max_context_tokens: int = 100000, tokenizer: str = ""):
         self.max_context_tokens = max_context_tokens
+        self._tokenizer: Any = None
+        self._tokenizer_name = tokenizer
+
+        # Try to load accurate tokenizer
+        if tokenizer:
+            self._init_tokenizer(tokenizer)
+        else:
+            # Auto-detect best available
+            self._try_auto_tokenizer()
+
+    def _init_tokenizer(self, name: str) -> None:
+        """Initialize a specific tokenizer."""
+        try:
+            import tiktoken
+            self._tokenizer = tiktoken.get_encoding(name)
+            logger.debug(f"Using tiktoken tokenizer: {name}")
+        except (ImportError, Exception):
+            pass
+
+    def _try_auto_tokenizer(self) -> None:
+        """Try to auto-detect the best tokenizer."""
+        try:
+            import tiktoken
+            self._tokenizer = tiktoken.get_encoding("cl100k_base")  # Claude/GPT-4 compatible
+            logger.debug("Using tiktoken cl100k_base tokenizer")
+        except ImportError:
+            logger.debug("tiktoken not installed, using character-based estimation")
 
     def estimate_tokens(self, text: str) -> int:
-        """Estimate token count from text."""
+        """
+        Count tokens accurately if tokenizer available, else estimate.
+        Accurate counting prevents wasted context or truncation errors.
+        """
+        if self._tokenizer is not None:
+            try:
+                return len(self._tokenizer.encode(text))
+            except Exception:
+                pass
+        # Fallback: character-based estimation
         return len(text) // self.CHARS_PER_TOKEN
 
     def fit_context(
