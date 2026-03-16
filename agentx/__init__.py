@@ -12,6 +12,7 @@ Features:
 - Self-Learning (reduce LLM dependency over time)
 - Cost Management (model routing, budgets, tracking)
 - Scaling & Latency (rate limiting, optimization)
+- MCP Support (connect to any MCP tool server)
 """
 
 __version__ = "0.2.0"
@@ -49,6 +50,9 @@ from .prompts import PromptTemplate, PromptManager, ContextManager, ResponseCach
 # --- Scaling ---
 from .scaling import ModelRouter, ModelConfig, RateLimiter, SelfLearner, LatencyOptimizer
 
+# --- MCP ---
+from .tools.mcp import MCPConnection, MCPManager, MCPTool
+
 # --- Agent Patterns ---
 from .agents import RouterAgent, GuardrailAgent, SummarizationAgent, ClassifierAgent, RAGAgent
 
@@ -78,6 +82,8 @@ __all__ = [
     "PromptTemplate", "PromptManager", "ContextManager", "ResponseCache",
     # Scaling
     "ModelRouter", "ModelConfig", "RateLimiter", "SelfLearner", "LatencyOptimizer",
+    # MCP
+    "MCPConnection", "MCPManager", "MCPTool",
     # Agent Patterns
     "RouterAgent", "GuardrailAgent", "SummarizationAgent", "ClassifierAgent", "RAGAgent",
     # Utils
