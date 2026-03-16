@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentx"
+version = "0.1.0"
+description = "Custom Multi-Agent System Framework - Build production-ready AI agent systems without framework overhead"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "GR Tech Learn", email = "contact@aimediahub.in"},
+]
+keywords = ["ai", "agents", "multi-agent", "rag", "llm", "interview", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.0",
+    "anthropic>=0.40.0",
+]
+
+[project.optional-dependencies]
+all = [
+    "openai>=1.0",
+    "qdrant-client>=1.7",
+    "asyncpg>=0.29",
+    "redis>=5.0",
+    "aiohttp>=3.9",
+    "voyageai>=0.3",
+]
+openai = ["openai>=1.0"]
+qdrant = ["qdrant-client>=1.7"]
+postgres = ["asyncpg>=0.29"]
+redis = ["redis>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/grtechlearn/agentx"
+Repository = "https://github.com/grtechlearn/agentx"
+Issues = "https://github.com/grtechlearn/agentx/issues"
+
+[tool.setuptools.packages.find]
+include = ["agentx*"]
