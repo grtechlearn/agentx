@@ -33,7 +33,11 @@ from .memory import AgentMemory, ShortTermMemory, LongTermMemory, MemoryEntry
 from .rag import RAGEngine, Document, TextChunker, ChunkConfig
 
 # --- Config ---
-from .config import AgentXConfig, LLMBudget, DataGovernance, SystemMetrics, CacheConfig
+from .config import AgentXConfig, LLMBudget, DataGovernance, SystemMetrics, CacheConfig, DatabaseConfig
+from .config import LLMConfig as LLMLayerSetup, LLMLayerConfig
+
+# --- App Bootstrap ---
+from .app import AgentXApp
 
 # --- Pipeline ---
 from .pipeline import IngestionPipeline, PIIDetector, DataValidator, DataCleaner, FileLoader
@@ -56,6 +60,9 @@ from .tools.mcp import MCPConnection, MCPManager, MCPTool
 # --- Agent Patterns ---
 from .agents import RouterAgent, GuardrailAgent, SummarizationAgent, ClassifierAgent, RAGAgent
 
+# --- Database ---
+from .db import Database, create_database
+
 # --- Utils ---
 from .utils import setup_logging, metrics
 
@@ -72,6 +79,9 @@ __all__ = [
     "RAGEngine", "Document", "TextChunker", "ChunkConfig",
     # Config
     "AgentXConfig", "LLMBudget", "DataGovernance", "SystemMetrics", "CacheConfig",
+    "DatabaseConfig", "LLMLayerSetup", "LLMLayerConfig",
+    # App
+    "AgentXApp",
     # Pipeline
     "IngestionPipeline", "PIIDetector", "DataValidator", "DataCleaner", "FileLoader",
     # Security
@@ -86,6 +96,8 @@ __all__ = [
     "MCPConnection", "MCPManager", "MCPTool",
     # Agent Patterns
     "RouterAgent", "GuardrailAgent", "SummarizationAgent", "ClassifierAgent", "RAGAgent",
+    # Database
+    "Database", "create_database",
     # Utils
     "setup_logging", "metrics",
 ]

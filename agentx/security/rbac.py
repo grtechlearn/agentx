@@ -129,19 +129,35 @@ class RBACManager:
     """
     Role-Based Access Control manager.
     Handles authentication, authorization, and audit logging.
+
+    When a Database instance is provided, users and audit logs persist to DB.
+    Otherwise uses in-memory storage (lost on restart).
     """
 
-    def __init__(self, secret_key: str = "agentx-secret"):
+    def __init__(self, secret_key: str = "agentx-secret", db: Any = None):
         self._users: dict[str, User] = {}
         self._audit_log: list[AuditEntry] = []
         self._secret_key = secret_key
         self._rate_limits: dict[str, list[float]] = {}
+        self._db = db  # Optional Database instance
 
     # --- User Management ---
 
     def add_user(self, user: User) -> None:
         self._users[user.id] = user
         self._audit("system", "user_created", f"user:{user.id}", {"role": user.role.value})
+        # Persist to DB
+        if self._db and self._db.is_connected:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._db.save_user(
+                    id=user.id, name=user.name, email=user.email,
+                    role=user.role.value, organization_id=user.organization_id,
+                    metadata=user.metadata,
+                ))
+            except RuntimeError:
+                pass  # No event loop, skip async persistence
 
     def get_user(self, user_id: str) -> User | None:
         return self._users.get(user_id)
@@ -159,6 +175,17 @@ class RBACManager:
             old_role = user.role
             user.role = new_role
             self._audit("system", "role_changed", f"user:{user_id}", {"old": old_role.value, "new": new_role.value})
+            if self._db and self._db.is_connected:
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._db.save_user(
+                        id=user.id, name=user.name, email=user.email,
+                        role=new_role.value, organization_id=user.organization_id,
+                        metadata=user.metadata,
+                    ))
+                except RuntimeError:
+                    pass
             return True
         return False
 
@@ -220,6 +247,34 @@ class RBACManager:
                 return user
         return None
 
+    # --- Async User Management (for DB-backed operations) ---
+
+    async def load_users(self) -> None:
+        """Load users from database into memory cache."""
+        if not self._db or not self._db.is_connected:
+            return
+        rows = await self._db.list_users()
+        for row in rows:
+            user = User(
+                id=row["id"], name=row.get("name", ""), email=row.get("email", ""),
+                role=Role(row.get("role", "user")),
+                organization_id=row.get("organization_id", ""),
+                is_active=bool(row.get("is_active", 1)),
+                created_at=row.get("created_at", time.time()),
+            )
+            self._users[user.id] = user
+
+    async def add_user_async(self, user: User) -> None:
+        """Add user with async DB persistence."""
+        self._users[user.id] = user
+        self._audit("system", "user_created", f"user:{user.id}", {"role": user.role.value})
+        if self._db and self._db.is_connected:
+            await self._db.save_user(
+                id=user.id, name=user.name, email=user.email,
+                role=user.role.value, organization_id=user.organization_id,
+                metadata=user.metadata,
+            )
+
     # --- Audit ---
 
     def _audit(self, user_id: str, action: str, resource: str, details: dict[str, Any] | None = None, success: bool = True) -> None:
@@ -227,6 +282,17 @@ class RBACManager:
         self._audit_log.append(entry)
         if len(self._audit_log) > 10000:
             self._audit_log = self._audit_log[-5000:]
+        # Write-through to DB
+        if self._db and self._db.is_connected:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._db.audit(
+                    action=action, user_id=user_id, resource=resource,
+                    details=details or {}, success=success, reason=entry.reason,
+                ))
+            except RuntimeError:
+                pass
 
     def get_audit_log(self, user_id: str = "", action: str = "", limit: int = 100) -> list[AuditEntry]:
         results = self._audit_log
@@ -235,6 +301,13 @@ class RBACManager:
         if action:
             results = [e for e in results if e.action == action]
         return results[-limit:]
+
+    async def get_audit_log_async(self, user_id: str = "", action: str = "", limit: int = 100) -> list[dict]:
+        """Get audit log from database (full history, not just in-memory)."""
+        if self._db and self._db.is_connected:
+            return await self._db.get_audit_log(user_id=user_id, action=action, limit=limit)
+        # Fallback to in-memory
+        return [e.model_dump() for e in self.get_audit_log(user_id, action, limit)]
 
     def audit_summary(self) -> dict[str, Any]:
         return {

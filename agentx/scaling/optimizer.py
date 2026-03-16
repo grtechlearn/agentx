@@ -161,25 +161,46 @@ class SelfLearner:
     3. Rule-based shortcuts for common queries
     4. Training data collection for future fine-tuning
     5. Confidence-based LLM bypass
+
+    When a Database instance is provided, rules persist to DB.
+    Otherwise falls back to file-based storage.
     """
 
-    def __init__(self, storage_path: str = "./data/learned", min_confidence: float = 0.9):
+    def __init__(self, storage_path: str = "./data/learned", min_confidence: float = 0.9, db: Any = None):
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
         self.min_confidence = min_confidence
         self._rules: dict[str, LearnedRule] = {}
         self._training_data: list[dict[str, Any]] = []
+        self._db = db  # Optional Database instance
         self._loaded = False
 
     async def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        rules_file = self.storage_path / "rules.json"
-        if rules_file.exists():
-            data = json.loads(rules_file.read_text())
-            for item in data:
-                rule = LearnedRule(**item)
+        if self._db and self._db.is_connected:
+            # Load from database
+            rows = await self._db.fetch_all(
+                "SELECT * FROM agentx_learned_rules WHERE is_active = 1"
+            )
+            for row in rows:
+                rule = LearnedRule(
+                    pattern=row["pattern"], response=row["response"],
+                    confidence=row.get("confidence", 0.0),
+                    times_used=row.get("times_used", 0),
+                    times_validated=row.get("times_validated", 0),
+                    source=row.get("source", "auto"),
+                    created_at=row.get("created_at", time.time()),
+                )
                 self._rules[rule.pattern] = rule
+        else:
+            # Fallback: load from file
+            rules_file = self.storage_path / "rules.json"
+            if rules_file.exists():
+                data = json.loads(rules_file.read_text())
+                for item in data:
+                    rule = LearnedRule(**item)
+                    self._rules[rule.pattern] = rule
         self._loaded = True
 
     async def check(self, query: str) -> str | None:
@@ -191,6 +212,9 @@ class SelfLearner:
         rule = self._rules.get(normalized)
         if rule and rule.confidence >= self.min_confidence:
             rule.times_used += 1
+            # Update usage in DB
+            if self._db and self._db.is_connected:
+                await self._db.increment_rule_usage(normalized)
             logger.info(f"Self-learned response used (confidence: {rule.confidence:.2f})")
             return rule.response
 
@@ -211,6 +235,8 @@ class SelfLearner:
 
         if best_match:
             best_match.times_used += 1
+            if self._db and self._db.is_connected:
+                await self._db.increment_rule_usage(best_match.pattern)
             return best_match.response
 
         return None
@@ -235,7 +261,7 @@ class SelfLearner:
                 times_validated=1 if validated else 0,
             )
 
-        # Save rules
+        # Write-through: save to DB or file
         await self._save_rules()
 
         # Collect training data
@@ -247,9 +273,18 @@ class SelfLearner:
         })
 
     async def _save_rules(self) -> None:
-        rules_file = self.storage_path / "rules.json"
-        data = [r.model_dump() for r in self._rules.values()]
-        rules_file.write_text(json.dumps(data, indent=2))
+        if self._db and self._db.is_connected:
+            # Save to database
+            for rule in self._rules.values():
+                await self._db.save_rule(
+                    pattern=rule.pattern, response=rule.response,
+                    confidence=rule.confidence, source=rule.source,
+                )
+        else:
+            # Fallback: save to file
+            rules_file = self.storage_path / "rules.json"
+            data = [r.model_dump() for r in self._rules.values()]
+            rules_file.write_text(json.dumps(data, indent=2))
 
     async def export_training_data(self, format: str = "jsonl") -> str:
         """Export collected data for fine-tuning."""

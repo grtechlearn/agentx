@@ -50,16 +50,65 @@ class PromptManager:
     - Variable interpolation
     - Versioning
     - Performance tracking per prompt
+
+    When a Database instance is provided, templates persist to DB.
+    Otherwise uses in-memory storage.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, db: Any = None) -> None:
         self._templates: dict[str, PromptTemplate] = {}
         self._performance: dict[str, dict[str, Any]] = {}
+        self._db = db  # Optional Database instance
 
     def register(self, template: PromptTemplate) -> None:
         key = f"{template.name}:{template.version}"
         self._templates[key] = template
         self._templates[template.name] = template  # latest version shortcut
+        # Persist to DB
+        if self._db and self._db.is_connected:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._db.save_prompt(
+                    name=template.name, template=template.template,
+                    version=template.version, description=template.description,
+                    variables=template.variables, model_hint=template.model_hint,
+                    tags=template.tags,
+                ))
+            except RuntimeError:
+                pass
+
+    async def register_async(self, template: PromptTemplate) -> None:
+        """Register with guaranteed DB persistence."""
+        key = f"{template.name}:{template.version}"
+        self._templates[key] = template
+        self._templates[template.name] = template
+        if self._db and self._db.is_connected:
+            await self._db.save_prompt(
+                name=template.name, template=template.template,
+                version=template.version, description=template.description,
+                variables=template.variables, model_hint=template.model_hint,
+                tags=template.tags,
+            )
+
+    async def load_from_db(self) -> None:
+        """Load all prompt templates from database into memory."""
+        if not self._db or not self._db.is_connected:
+            return
+        rows = await self._db.fetch_all(
+            "SELECT * FROM agentx_prompts WHERE is_active = 1"
+        )
+        for row in rows:
+            template = PromptTemplate(
+                name=row["name"], version=row.get("version", "1.0"),
+                template=row["template"], description=row.get("description", ""),
+                variables=json.loads(row.get("variables", "[]")),
+                model_hint=row.get("model_hint", ""),
+                tags=json.loads(row.get("tags", "[]")),
+            )
+            key = f"{template.name}:{template.version}"
+            self._templates[key] = template
+            self._templates[template.name] = template
 
     def get(self, name: str, version: str = "") -> PromptTemplate | None:
         key = f"{name}:{version}" if version else name

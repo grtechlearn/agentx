@@ -221,6 +221,9 @@ Return JSON:
 class CostTracker:
     """
     Track LLM usage costs per agent, user, and session.
+
+    When a Database instance is provided, cost records persist to DB.
+    Otherwise uses in-memory tracking (lost on restart).
     """
 
     # Approximate costs per 1K tokens (USD)
@@ -232,11 +235,13 @@ class CostTracker:
         "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
     }
 
-    def __init__(self) -> None:
+    def __init__(self, db: Any = None) -> None:
         self._usage: dict[str, dict[str, float]] = {}  # key -> {input_tokens, output_tokens, cost}
         self._total_cost: float = 0.0
+        self._db = db  # Optional Database instance
 
-    def track(self, model: str, input_tokens: int, output_tokens: int, key: str = "global") -> float:
+    def track(self, model: str, input_tokens: int, output_tokens: int, key: str = "global",
+              agent_name: str = "", session_id: str = "") -> float:
         """Track token usage and return cost."""
         costs = self.MODEL_COSTS.get(model, {"input": 0.003, "output": 0.015})
         cost = (input_tokens / 1000 * costs["input"]) + (output_tokens / 1000 * costs["output"])
@@ -250,10 +255,40 @@ class CostTracker:
         self._usage[key]["requests"] += 1
         self._total_cost += cost
 
+        # Write-through to DB
+        if self._db and self._db.is_connected:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._db.track_cost(
+                    model=model, input_tokens=input_tokens, output_tokens=output_tokens,
+                    cost_usd=cost, user_id=key, agent_name=agent_name, session_id=session_id,
+                ))
+            except RuntimeError:
+                pass
+
+        return cost
+
+    async def track_async(self, model: str, input_tokens: int, output_tokens: int,
+                          key: str = "global", agent_name: str = "", session_id: str = "") -> float:
+        """Async version of track — guaranteed DB persistence."""
+        cost = self.track(model, input_tokens, output_tokens, key, agent_name, session_id)
+        # Ensure DB write completes (track() fires and forgets, this awaits)
+        if self._db and self._db.is_connected:
+            await self._db.track_cost(
+                model=model, input_tokens=input_tokens, output_tokens=output_tokens,
+                cost_usd=cost, user_id=key, agent_name=agent_name, session_id=session_id,
+            )
         return cost
 
     def get_cost(self, key: str = "global") -> float:
         return self._usage.get(key, {}).get("cost", 0.0)
+
+    async def get_cost_from_db(self, user_id: str = "", days: int = 30) -> dict:
+        """Get cost summary from database (full history)."""
+        if self._db and self._db.is_connected:
+            return await self._db.get_cost_summary(user_id=user_id, days=days)
+        return {"total_cost": self._total_cost, "total_input": 0, "total_output": 0, "total_calls": 0}
 
     @property
     def total_cost(self) -> float:

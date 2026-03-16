@@ -17,6 +17,139 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
+# ---------------------------------------------------------------------------
+# Database Configuration
+# ---------------------------------------------------------------------------
+
+class DatabaseConfig(BaseModel):
+    """Database configuration — SQLite (dev) or PostgreSQL (production)."""
+
+    provider: str = "sqlite"  # sqlite, postgres
+    sqlite_path: str = ""  # empty = auto (./data/agentx.db), ":memory:" for tests
+    postgres_dsn: str = ""  # postgresql://user:pass@host:5432/dbname
+    pool_min_size: int = 2
+    pool_max_size: int = 10
+    auto_migrate: bool = True  # auto-apply schema on connect
+
+    @classmethod
+    def sqlite(cls, path: str = "") -> DatabaseConfig:
+        return cls(provider="sqlite", sqlite_path=path)
+
+    @classmethod
+    def postgres(cls, dsn: str) -> DatabaseConfig:
+        return cls(provider="postgres", postgres_dsn=dsn)
+
+    @classmethod
+    def memory(cls) -> DatabaseConfig:
+        """In-memory SQLite — great for tests."""
+        return cls(provider="sqlite", sqlite_path=":memory:")
+
+
+# ---------------------------------------------------------------------------
+# Multi-LLM Layer Configuration
+# ---------------------------------------------------------------------------
+
+class LLMLayerConfig(BaseModel):
+    """
+    Configure different LLMs for different purposes.
+
+    Each layer can use a different provider/model optimized for its task:
+    - agent: Main agent conversations (quality matters)
+    - evaluation: Hallucination detection, scoring (needs to be precise)
+    - routing: Intent classification, routing decisions (can be fast/cheap)
+    - embedding: Text embeddings for RAG (specialized model)
+    - summary: Summarization tasks (mid-tier is fine)
+    - fallback: When primary model fails or budget exceeded
+    """
+
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-6"
+    api_key: str = ""  # empty = use env var (ANTHROPIC_API_KEY, OPENAI_API_KEY)
+    base_url: str = ""  # empty = default provider URL
+    temperature: float = 0.7
+    max_tokens: int = 4096
+
+
+class LLMConfig(BaseModel):
+    """
+    Multi-LLM configuration — assign different models to different layers.
+
+    Example:
+        llm = LLMConfig(
+            agent=LLMLayerConfig(model="claude-sonnet-4-6"),       # Quality conversations
+            evaluation=LLMLayerConfig(model="claude-opus-4-6"),     # Precise evaluation
+            routing=LLMLayerConfig(model="claude-haiku-4-5-20251001"),      # Fast & cheap routing
+            embedding=LLMLayerConfig(provider="openai", model="text-embedding-3-small"),
+            fallback=LLMLayerConfig(model="claude-haiku-4-5-20251001"),     # Budget fallback
+        )
+    """
+
+    # Layer-specific LLM configs (None = use default)
+    default: LLMLayerConfig = Field(default_factory=lambda: LLMLayerConfig())
+    agent: LLMLayerConfig | None = None
+    evaluation: LLMLayerConfig | None = None
+    routing: LLMLayerConfig | None = None
+    embedding: LLMLayerConfig | None = None
+    summary: LLMLayerConfig | None = None
+    fallback: LLMLayerConfig | None = None
+
+    def get_layer(self, layer: str) -> LLMLayerConfig:
+        """Get config for a specific layer, falling back to default."""
+        specific = getattr(self, layer, None)
+        return specific if specific is not None else self.default
+
+    @classmethod
+    def single(cls, provider: str = "anthropic", model: str = "claude-sonnet-4-6",
+               api_key: str = "", **kwargs: Any) -> LLMConfig:
+        """Use a single model for everything."""
+        return cls(default=LLMLayerConfig(
+            provider=provider, model=model, api_key=api_key, **kwargs
+        ))
+
+    @classmethod
+    def cost_optimized(cls) -> LLMConfig:
+        """Use cheap models where possible, quality models where needed."""
+        return cls(
+            default=LLMLayerConfig(model="claude-sonnet-4-6"),
+            routing=LLMLayerConfig(model="claude-haiku-4-5-20251001", temperature=0.1, max_tokens=256),
+            evaluation=LLMLayerConfig(model="claude-sonnet-4-6", temperature=0.1),
+            summary=LLMLayerConfig(model="claude-haiku-4-5-20251001", max_tokens=1024),
+            fallback=LLMLayerConfig(model="claude-haiku-4-5-20251001"),
+        )
+
+    @classmethod
+    def quality_first(cls) -> LLMConfig:
+        """Use the best model for agent tasks, standard for everything else."""
+        return cls(
+            default=LLMLayerConfig(model="claude-sonnet-4-6"),
+            agent=LLMLayerConfig(model="claude-opus-4-6", max_tokens=8192),
+            evaluation=LLMLayerConfig(model="claude-opus-4-6", temperature=0.1),
+            routing=LLMLayerConfig(model="claude-sonnet-4-6", temperature=0.1, max_tokens=256),
+            fallback=LLMLayerConfig(model="claude-sonnet-4-6"),
+        )
+
+    @classmethod
+    def openai(cls, model: str = "gpt-4o", api_key: str = "") -> LLMConfig:
+        """Use OpenAI models across all layers."""
+        return cls(
+            default=LLMLayerConfig(provider="openai", model=model, api_key=api_key),
+            routing=LLMLayerConfig(provider="openai", model="gpt-4o-mini", api_key=api_key,
+                                   temperature=0.1, max_tokens=256),
+            fallback=LLMLayerConfig(provider="openai", model="gpt-4o-mini", api_key=api_key),
+        )
+
+    @classmethod
+    def mixed(cls) -> LLMConfig:
+        """Mix providers — Claude for generation, OpenAI for embeddings."""
+        return cls(
+            default=LLMLayerConfig(provider="anthropic", model="claude-sonnet-4-6"),
+            embedding=LLMLayerConfig(provider="openai", model="text-embedding-3-small"),
+            routing=LLMLayerConfig(provider="anthropic", model="claude-haiku-4-5-20251001",
+                                   temperature=0.1, max_tokens=256),
+            fallback=LLMLayerConfig(provider="anthropic", model="claude-haiku-4-5-20251001"),
+        )
+
+
 class LLMBudget(BaseModel):
     """Cost management for LLM usage."""
 
@@ -124,7 +257,16 @@ class SelfLearningConfig(BaseModel):
 
 
 class AgentXConfig(BaseModel):
-    """Master configuration for AgentX."""
+    """
+    Master configuration for AgentX.
+
+    Everything is configurable from one place:
+    - Database: SQLite (dev) or PostgreSQL (production)
+    - LLM: Different models for different layers (agent, eval, routing, etc.)
+    - Budget: Cost limits and rate limiting
+    - Security: PII detection, data governance
+    - Performance: Caching, self-learning, latency targets
+    """
 
     # Environment
     env: Environment = Environment.DEVELOPMENT
@@ -132,10 +274,16 @@ class AgentXConfig(BaseModel):
     version: str = "0.2.0"
     debug: bool = False
 
-    # LLM
-    default_provider: str = "anthropic"
-    default_model: str = "claude-sonnet-4-6"
-    fallback_model: str = "claude-haiku-4-5-20251001"
+    # Database
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+
+    # LLM (multi-layer)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+
+    # Legacy LLM fields (still work for backward compatibility)
+    default_provider: str = ""
+    default_model: str = ""
+    fallback_model: str = ""
     api_key: str = ""
     api_base_url: str = ""
 
@@ -156,21 +304,51 @@ class AgentXConfig(BaseModel):
     def from_env(cls) -> AgentXConfig:
         """Load config from environment variables."""
         import os
+
+        # Database from env
+        db_provider = os.getenv("AGENTX_DB_PROVIDER", "sqlite")
+        db_config = DatabaseConfig(
+            provider=db_provider,
+            sqlite_path=os.getenv("AGENTX_DB_PATH", ""),
+            postgres_dsn=os.getenv("AGENTX_DATABASE_URL", ""),
+        )
+
+        # LLM from env
+        llm_provider = os.getenv("AGENTX_LLM_PROVIDER", "anthropic")
+        llm_model = os.getenv("AGENTX_LLM_MODEL", "claude-sonnet-4-6")
+        llm_config = LLMConfig.single(
+            provider=llm_provider, model=llm_model,
+            api_key=os.getenv("ANTHROPIC_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+        )
+
         return cls(
             env=Environment(os.getenv("AGENTX_ENV", "development")),
             app_name=os.getenv("AGENTX_APP_NAME", "AgentX"),
-            default_provider=os.getenv("AGENTX_LLM_PROVIDER", "anthropic"),
-            default_model=os.getenv("AGENTX_LLM_MODEL", "claude-sonnet-4-6"),
-            api_key=os.getenv("ANTHROPIC_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+            database=db_config,
+            llm=llm_config,
             debug=os.getenv("AGENTX_DEBUG", "false").lower() == "true",
         )
 
     @classmethod
-    def production(cls) -> AgentXConfig:
-        """Production-optimized defaults."""
+    def development(cls) -> AgentXConfig:
+        """Development defaults — SQLite, single model."""
+        return cls(
+            env=Environment.DEVELOPMENT,
+            debug=True,
+            database=DatabaseConfig.sqlite(),
+            llm=LLMConfig.single(),
+        )
+
+    @classmethod
+    def production(cls, postgres_dsn: str = "") -> AgentXConfig:
+        """Production-optimized — PostgreSQL, cost-optimized LLM layers."""
+        import os
+        dsn = postgres_dsn or os.getenv("AGENTX_DATABASE_URL", "")
         return cls(
             env=Environment.PRODUCTION,
             debug=False,
+            database=DatabaseConfig.postgres(dsn) if dsn else DatabaseConfig.sqlite(),
+            llm=LLMConfig.cost_optimized(),
             budget=LLMBudget(prefer_cheaper_model=True, fallback_to_cache=True),
             governance=DataGovernance(detect_pii=True, encrypt_at_rest=True),
             metrics=SystemMetrics(max_hallucination_tolerance=0.05),

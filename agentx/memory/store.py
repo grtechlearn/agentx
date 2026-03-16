@@ -128,18 +128,41 @@ class ShortTermMemory(BaseMemoryStore):
 
 class LongTermMemory(BaseMemoryStore):
     """
-    File-based persistent memory.
+    Persistent memory with write-through cache.
+    Uses Database when provided, falls back to file-based storage.
     Survives restarts, good for user preferences, learned facts, etc.
     """
 
-    def __init__(self, storage_path: str = "./data/memory"):
+    def __init__(self, storage_path: str = "./data/memory", db: Any = None):
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, MemoryEntry] = {}
+        self._db = db  # Optional Database instance
         self._loaded = False
 
     async def _ensure_loaded(self) -> None:
-        if not self._loaded:
+        if self._loaded:
+            return
+        if self._db and self._db.is_connected:
+            # Load from database
+            rows = await self._db.search_memory()
+            for row in rows:
+                try:
+                    entry = MemoryEntry(
+                        key=row["key"], value=row["value"],
+                        memory_type=row.get("memory_type", "general"),
+                        agent=row.get("agent", ""),
+                        user_id=row.get("user_id", ""),
+                        importance=row.get("importance", 0.5),
+                        ttl=row.get("ttl"),
+                        timestamp=row.get("created_at", time.time()),
+                    )
+                    if not entry.is_expired():
+                        self._cache[entry.key] = entry
+                except Exception:
+                    continue
+        else:
+            # Fallback: load from files
             for file in self.storage_path.glob("*.json"):
                 try:
                     data = json.loads(file.read_text())
@@ -148,13 +171,22 @@ class LongTermMemory(BaseMemoryStore):
                         self._cache[entry.key] = entry
                 except Exception:
                     continue
-            self._loaded = True
+        self._loaded = True
 
     async def store(self, entry: MemoryEntry) -> None:
         await self._ensure_loaded()
         self._cache[entry.key] = entry
-        file_path = self.storage_path / f"{self._safe_filename(entry.key)}.json"
-        file_path.write_text(entry.model_dump_json(indent=2))
+        # Write-through to database
+        if self._db and self._db.is_connected:
+            value = json.dumps(entry.value) if isinstance(entry.value, (dict, list)) else str(entry.value)
+            await self._db.save_memory(
+                key=entry.key, value=value, memory_type=entry.memory_type,
+                agent=entry.agent, user_id=entry.user_id,
+                importance=entry.importance, ttl=entry.ttl, metadata=entry.metadata,
+            )
+        else:
+            file_path = self.storage_path / f"{self._safe_filename(entry.key)}.json"
+            file_path.write_text(entry.model_dump_json(indent=2))
 
     async def retrieve(self, key: str) -> MemoryEntry | None:
         await self._ensure_loaded()
@@ -180,9 +212,12 @@ class LongTermMemory(BaseMemoryStore):
         await self._ensure_loaded()
         if key in self._cache:
             del self._cache[key]
-            file_path = self.storage_path / f"{self._safe_filename(key)}.json"
-            if file_path.exists():
-                file_path.unlink()
+            if self._db and self._db.is_connected:
+                await self._db.delete_memory(key)
+            else:
+                file_path = self.storage_path / f"{self._safe_filename(key)}.json"
+                if file_path.exists():
+                    file_path.unlink()
             return True
         return False
 
@@ -214,11 +249,14 @@ class AgentMemory:
     """
     Combined memory system for an agent.
     Provides unified interface to short-term and long-term memory.
+
+    When a Database instance is provided, long-term memory persists to DB.
+    Otherwise falls back to file-based storage.
     """
 
-    def __init__(self, storage_path: str = "./data/memory"):
+    def __init__(self, storage_path: str = "./data/memory", db: Any = None):
         self.short_term = ShortTermMemory()
-        self.long_term = LongTermMemory(storage_path)
+        self.long_term = LongTermMemory(storage_path, db=db)
 
     async def remember(self, key: str, value: Any, long_term: bool = False, **kwargs: Any) -> None:
         entry = MemoryEntry(key=key, value=value, **kwargs)
