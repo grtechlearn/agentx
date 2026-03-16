@@ -273,11 +273,19 @@ class RAGEngine:
         vector_store: BaseVectorStore,
         chunker: TextChunker | None = None,
         llm: Any = None,
+        bm25: Any = None,
+        reranker: Any = None,
+        query_rewriter: Any = None,
+        semantic_cache: Any = None,
     ):
         self.embedder = embedder
         self.vector_store = vector_store
         self.chunker = chunker or TextChunker()
         self.llm = llm  # Optional: for query decomposition & re-ranking
+        self._bm25 = bm25          # Optional: BM25Index for hybrid search
+        self._reranker = reranker   # Optional: CrossEncoderReranker
+        self._rewriter = query_rewriter  # Optional: QueryRewriter
+        self._semantic_cache = semantic_cache  # Optional: SemanticCache
 
     # --- Ingestion ---
 
@@ -291,6 +299,9 @@ class RAGEngine:
         for chunk, emb in zip(chunks, embeddings):
             chunk.embedding = emb
         await self.vector_store.add(chunks)
+        # Index into BM25 if available
+        if self._bm25 is not None:
+            self._bm25.add_documents(chunks)
         logger.info(f"Ingested {len(chunks)} chunks")
         return len(chunks)
 
@@ -301,6 +312,9 @@ class RAGEngine:
         for doc, emb in zip(documents, embeddings):
             doc.embedding = emb
         await self.vector_store.add(documents)
+        # Index into BM25 if available
+        if self._bm25 is not None:
+            self._bm25.add_documents(documents)
         return len(documents)
 
     # --- Retrieval Strategies ---
@@ -323,17 +337,31 @@ class RAGEngine:
         keyword_weight: float = 0.3,
     ) -> list[Document]:
         """
-        Hybrid search: combine semantic similarity + keyword matching.
+        Hybrid search: combine semantic similarity + BM25 keyword matching.
+        Uses true BM25 scoring when BM25Index is available, falls back to word overlap.
         """
         # Semantic search
         semantic_results = await self.search(query, limit=limit * 2, filters=filters)
 
-        # Keyword scoring
-        query_words = set(query.lower().split())
-        for doc in semantic_results:
-            doc_words = set(doc.content.lower().split())
-            keyword_overlap = len(query_words & doc_words) / max(len(query_words), 1)
-            doc.score = (1 - keyword_weight) * doc.score + keyword_weight * keyword_overlap
+        # Try BM25 scoring if index available
+        if self._bm25 is not None and self._bm25.size > 0:
+            bm25_results = self._bm25.search(query, limit=limit * 2, filters=filters)
+            bm25_scores = {doc.id: doc.score for doc in bm25_results}
+            # Normalize BM25 scores to 0-1
+            max_bm25 = max(bm25_scores.values()) if bm25_scores else 1.0
+            if max_bm25 > 0:
+                bm25_scores = {k: v / max_bm25 for k, v in bm25_scores.items()}
+            # Merge scores
+            for doc in semantic_results:
+                bm25_score = bm25_scores.get(doc.id, 0.0)
+                doc.score = (1 - keyword_weight) * doc.score + keyword_weight * bm25_score
+        else:
+            # Fallback: simple word overlap
+            query_words = set(query.lower().split())
+            for doc in semantic_results:
+                doc_words = set(doc.content.lower().split())
+                keyword_overlap = len(query_words & doc_words) / max(len(query_words), 1)
+                doc.score = (1 - keyword_weight) * doc.score + keyword_weight * keyword_overlap
 
         semantic_results.sort(key=lambda d: d.score, reverse=True)
         return semantic_results[:limit]
@@ -375,16 +403,45 @@ class RAGEngine:
         filters: dict[str, Any] | None = None,
     ) -> list[Document]:
         """
-        Two-stage retrieval: broad search → LLM re-ranking.
+        Two-stage retrieval: broad search → cross-encoder / LLM re-ranking.
+        Uses CrossEncoderReranker if available, falls back to LLM re-ranking.
         """
         # Stage 1: Broad retrieval
         candidates = await self.search(query, limit=initial_limit, filters=filters)
 
-        if not self.llm or len(candidates) <= limit:
+        if len(candidates) <= limit:
             return candidates[:limit]
 
-        # Stage 2: LLM re-ranking
-        return await self._rerank(query, candidates, limit)
+        # Stage 2: Re-ranking (prefer cross-encoder, fallback to LLM)
+        if self._reranker is not None:
+            return await self._reranker.rerank(query, candidates, limit)
+        elif self.llm:
+            return await self._rerank(query, candidates, limit)
+        return candidates[:limit]
+
+    async def search_with_rewrite(
+        self,
+        query: str,
+        limit: int = 5,
+        filters: dict[str, Any] | None = None,
+        strategy: str = "expand",
+    ) -> list[Document]:
+        """
+        Query rewrite → search: expand/rephrase query then merge results.
+        """
+        if not self._rewriter:
+            return await self.search(query, limit, filters)
+
+        rewritten = await self._rewriter.rewrite(query, strategy=strategy)
+        all_results: dict[str, Document] = {}
+        for q in rewritten:
+            results = await self.search(q, limit=limit, filters=filters)
+            for doc in results:
+                if doc.id not in all_results or doc.score > all_results[doc.id].score:
+                    all_results[doc.id] = doc
+
+        sorted_results = sorted(all_results.values(), key=lambda d: d.score, reverse=True)
+        return sorted_results[:limit]
 
     # --- Context Building ---
 
@@ -405,6 +462,7 @@ class RAGEngine:
             "hybrid": self.hybrid_search,
             "decomposed": self.decomposed_search,
             "rerank": self.search_with_rerank,
+            "rewrite": self.search_with_rewrite,
         }
         search_fn = strategies.get(strategy, self.hybrid_search)
         documents = await search_fn(query, limit=limit, filters=filters)

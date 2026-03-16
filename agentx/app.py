@@ -1,6 +1,6 @@
 """
 AgentX - Application Bootstrap.
-One-line setup that wires Database, LLMs, Memory, RBAC, and all modules from config.
+One-line setup that wires Database, LLMs, Memory, RBAC, Security, Tracing, and all modules.
 
 Usage:
     # Zero-config (SQLite + Claude Sonnet)
@@ -15,26 +15,21 @@ Usage:
     app = AgentXApp(AgentXConfig.production("postgresql://user:pass@db:5432/agentx"))
     await app.start()
 
-    # Custom config
-    app = AgentXApp(AgentXConfig(
-        database=DatabaseConfig.postgres("postgresql://..."),
-        llm=LLMConfig(
-            agent=LLMLayerConfig(model="claude-opus-4-6"),
-            routing=LLMLayerConfig(model="claude-haiku-4-5-20251001"),
-            evaluation=LLMLayerConfig(model="claude-sonnet-4-6"),
-        ),
-    ))
-    await app.start()
-
     # Access components
-    app.db          # Database
-    app.memory      # AgentMemory (write-through to DB)
-    app.rbac        # RBACManager (persisted to DB)
-    app.learner     # SelfLearner (persisted to DB)
-    app.costs       # CostTracker (persisted to DB)
-    app.prompts     # PromptManager (persisted to DB)
-    app.orchestrator  # Orchestrator
-    app.llm("agent")  # Get LLM for a specific layer
+    app.db              # Database
+    app.memory          # AgentMemory (write-through to DB)
+    app.rbac            # RBACManager (persisted to DB)
+    app.auth            # AuthGateway (JWT + injection guard)
+    app.namespaces      # NamespaceManager (vector namespace scoping)
+    app.learner         # SelfLearner (persisted to DB)
+    app.costs           # CostTracker (persisted to DB)
+    app.prompts         # PromptManager (persisted to DB)
+    app.orchestrator    # Orchestrator
+    app.tracer          # Distributed tracing
+    app.health          # Health checks
+    app.analytics       # Query analytics
+    app.queue           # Task queue (horizontal scaling)
+    app.llm("agent")    # Get LLM for a specific layer
 """
 
 from __future__ import annotations
@@ -47,10 +42,13 @@ from .core.llm import BaseLLMProvider, LLMConfig as CoreLLMConfig, create_llm
 from .core.orchestrator import Orchestrator
 from .db import Database, create_database
 from .evaluation.metrics import CostTracker
+from .evaluation.ragas import RAGASEvaluator, QueryAnalytics
 from .memory.store import AgentMemory
 from .prompts.manager import PromptManager
 from .scaling.optimizer import SelfLearner, ModelRouter
+from .scaling.tracing import Tracer, CircuitBreaker, TaskQueue, HealthCheck, LatencyBudget
 from .security.rbac import RBACManager
+from .security.auth import AuthGateway, InjectionGuard, NamespaceManager
 
 logger = logging.getLogger("agentx")
 
@@ -64,11 +62,19 @@ class AgentXApp:
     - Multi-layer LLMs (different models for different purposes)
     - Memory (short-term + long-term with DB persistence)
     - RBAC (users, permissions, audit — persisted to DB)
+    - Auth Gateway (JWT authentication + injection guard)
+    - Namespace Manager (vector namespace scoping per user/role)
     - Self-Learning (rules persisted to DB)
     - Cost Tracking (persisted to DB)
     - Prompt Manager (templates persisted to DB)
     - Orchestrator (agent management)
     - Model Router (smart model selection)
+    - Distributed Tracing (spans, latency tracking)
+    - Circuit Breaker (cascading failure protection)
+    - Task Queue (horizontal scaling with workers)
+    - Health Checks (readiness and liveness probes)
+    - Query Analytics (miss rates, feedback loops)
+    - RAGAS Evaluator (retrieval quality metrics)
     """
 
     def __init__(self, config: AgentXConfig | None = None):
@@ -79,11 +85,20 @@ class AgentXApp:
         self.db: Database | None = None
         self.memory: AgentMemory | None = None
         self.rbac: RBACManager | None = None
+        self.auth: AuthGateway | None = None
+        self.injection_guard: InjectionGuard | None = None
+        self.namespaces: NamespaceManager | None = None
         self.learner: SelfLearner | None = None
         self.costs: CostTracker | None = None
         self.prompts: PromptManager | None = None
         self.orchestrator: Orchestrator | None = None
         self.router: ModelRouter | None = None
+        self.tracer: Tracer | None = None
+        self.breaker: CircuitBreaker | None = None
+        self.queue: TaskQueue | None = None
+        self.health: HealthCheck | None = None
+        self.analytics: QueryAnalytics | None = None
+        self.evaluator: RAGASEvaluator | None = None
 
         # LLM provider cache — lazily created per layer
         self._llm_cache: dict[str, BaseLLMProvider] = {}
@@ -119,37 +134,71 @@ class AgentXApp:
         self.rbac = RBACManager(db=self.db)
         await self.rbac.load_users()
 
-        # 4. Self-Learning (persisted to DB)
+        # 4. Auth Gateway (JWT + injection guard)
+        self.auth = AuthGateway()
+        self.injection_guard = InjectionGuard()
+        self.namespaces = NamespaceManager()
+
+        # 5. Self-Learning (persisted to DB)
         self.learner = SelfLearner(
             storage_path=self.config.training_dir,
             min_confidence=self.config.self_learning.min_confidence_to_cache,
             db=self.db,
         )
 
-        # 5. Cost Tracking (persisted to DB)
+        # 6. Cost Tracking (persisted to DB)
         self.costs = CostTracker(db=self.db)
 
-        # 6. Prompt Manager (persisted to DB)
+        # 7. Prompt Manager (persisted to DB)
         self.prompts = PromptManager(db=self.db)
         await self.prompts.load_from_db()
 
-        # 7. Model Router
+        # 8. Model Router
         self.router = ModelRouter()
         self.router.setup_defaults()
 
-        # 8. Orchestrator
+        # 9. Orchestrator
         self.orchestrator = Orchestrator(name=self.config.app_name)
+
+        # 10. Distributed Tracing
+        self.tracer = Tracer(service=self.config.app_name)
+
+        # 11. Circuit Breaker (for LLM API calls)
+        self.breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=30.0)
+
+        # 12. Task Queue (horizontal scaling)
+        self.queue = TaskQueue(max_workers=4)
+
+        # 13. Health Checks
+        self.health = HealthCheck()
+        self.health.register("database", self._check_db_health)
+
+        # 14. Query Analytics
+        self.analytics = QueryAnalytics(db=self.db)
+
+        # 15. RAGAS Evaluator
+        self.evaluator = RAGASEvaluator()
 
         self._started = True
         logger.info(f"{self.config.app_name} started successfully")
         return self
 
     async def stop(self) -> None:
-        """Shutdown — close DB connections, cleanup."""
+        """Shutdown — close DB connections, stop workers, cleanup."""
+        if self.queue:
+            await self.queue.stop()
         if self.db:
             await self.db.close()
         self._started = False
         logger.info(f"{self.config.app_name} stopped")
+
+    # --- Health Check Implementation ---
+
+    async def _check_db_health(self) -> dict[str, Any]:
+        """Database health check."""
+        if self.db and self.db.is_connected:
+            return {"status": "healthy", "provider": self.config.database.provider}
+        return {"status": "unhealthy", "error": "Database not connected"}
 
     # --- LLM Access ---
 
@@ -217,6 +266,14 @@ class AgentXApp:
                 "pii_detection": self.config.governance.detect_pii,
                 "self_learning": self.config.self_learning.enabled,
                 "caching": self.config.cache.enabled,
+                "jwt_auth": True,
+                "injection_guard": True,
+                "distributed_tracing": True,
+                "circuit_breaker": True,
+                "task_queue": True,
+                "health_checks": True,
+                "ragas_evaluation": True,
+                "query_analytics": True,
             },
         }
 
