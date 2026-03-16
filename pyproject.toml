@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentx"
-version = "0.1.0"
-description = "Custom Multi-Agent System Framework - Build production-ready AI agent systems without framework overhead"
+version = "0.2.0"
+description = "Enterprise Multi-Agent System Framework - Production-ready AI agents with Advanced RAG, RBAC, Self-Learning, Cost Management"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [
     {name = "GR Tech Learn", email = "contact@aimediahub.in"},
 ]
-keywords = ["ai", "agents", "multi-agent", "rag", "llm", "interview", "claude"]
+keywords = ["ai", "agents", "multi-agent", "rag", "llm", "claude", "enterprise", "rbac", "hallucination", "self-learning"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
