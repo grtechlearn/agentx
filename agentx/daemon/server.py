@@ -159,8 +159,8 @@ class AgentXServer:
         # Middleware
         @web.middleware
         async def auth_middleware(request: web.Request, handler: Any) -> web.Response:
-            # Skip auth for health check
-            if request.path in ("/api/v1/health", "/health"):
+            # Skip auth for health check and dashboard
+            if request.path in ("/api/v1/health", "/health", "/", "/dashboard"):
                 return await handler(request)
             # Check API key if configured
             if self.api_key:
@@ -191,6 +191,10 @@ class AgentXServer:
             return response
 
         app.middlewares.extend([auth_middleware, cors_middleware])
+
+        # Dashboard routes
+        app.router.add_get("/", self._handle_dashboard)
+        app.router.add_get("/dashboard", self._handle_dashboard)
 
         # Routes
         app.router.add_post("/api/v1/chat", self._handle_chat)
@@ -240,16 +244,38 @@ class AgentXServer:
 
                 # Route
                 response_data = await self._raw_route(method, path, body)
-                response_json = json.dumps(response_data)
 
-                http_response = (
-                    "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: application/json\r\n"
-                    f"Content-Length: {len(response_json)}\r\n"
-                    "Access-Control-Allow-Origin: *\r\n"
-                    "\r\n"
-                    f"{response_json}"
-                )
+                # Serve dashboard as HTML
+                if isinstance(response_data, dict) and response_data.get("__dashboard__"):
+                    from ..dashboard import get_dashboard_path
+                    try:
+                        with open(get_dashboard_path(), "r", encoding="utf-8") as f:
+                            html = f.read()
+                        http_response = (
+                            "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: text/html; charset=utf-8\r\n"
+                            f"Content-Length: {len(html.encode('utf-8'))}\r\n"
+                            "\r\n"
+                            f"{html}"
+                        )
+                    except FileNotFoundError:
+                        http_response = (
+                            "HTTP/1.1 404 Not Found\r\n"
+                            "Content-Type: text/plain\r\n"
+                            "Content-Length: 19\r\n"
+                            "\r\n"
+                            "Dashboard not found"
+                        )
+                else:
+                    response_json = json.dumps(response_data)
+                    http_response = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: application/json\r\n"
+                        f"Content-Length: {len(response_json)}\r\n"
+                        "Access-Control-Allow-Origin: *\r\n"
+                        "\r\n"
+                        f"{response_json}"
+                    )
                 writer.write(http_response.encode())
                 await writer.drain()
             except Exception as e:
@@ -275,7 +301,9 @@ class AgentXServer:
         except json.JSONDecodeError:
             payload = {}
 
-        if path == "/api/v1/health" or path == "/health":
+        if path in ("/", "/dashboard"):
+            return {"__dashboard__": True}
+        elif path == "/api/v1/health" or path == "/health":
             return await self._health_data()
         elif path == "/api/v1/status":
             return await self._status_data()
@@ -298,6 +326,19 @@ class AgentXServer:
         logger.info("API server stopped")
 
     # --- aiohttp Route Handlers ---
+
+    async def _handle_dashboard(self, request: Any) -> Any:
+        """Serve the admin dashboard HTML."""
+        from aiohttp import web
+        from ..dashboard import get_dashboard_path
+
+        dashboard_path = get_dashboard_path()
+        try:
+            with open(dashboard_path, "r", encoding="utf-8") as f:
+                html = f.read()
+            return web.Response(text=html, content_type="text/html")
+        except FileNotFoundError:
+            return web.Response(text="Dashboard not found", status=404)
 
     async def _handle_chat(self, request: Any) -> Any:
         from aiohttp import web

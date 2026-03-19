@@ -1,6 +1,11 @@
 # AgentX - Enterprise Multi-Agent System Framework
 
-A lightweight, production-ready, enterprise-grade multi-agent AI framework. Build powerful AI agent systems with Advanced RAG, RBAC, self-learning, hallucination detection, and cost management — without the overhead of CrewAI or LangGraph.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-0.6.0-orange.svg)](https://github.com/grtechlearn/agentx)
+[![Tests](https://img.shields.io/badge/tests-334%20passing-brightgreen.svg)](https://github.com/grtechlearn/agentx)
+
+A lightweight, production-ready, enterprise-grade multi-agent AI framework. Build powerful AI agent systems with Advanced RAG, RBAC, self-learning, hallucination detection, cost management, and **autonomous 24/7 operation** — without the overhead of CrewAI or LangGraph.
 
 ## Why AgentX?
 
@@ -9,43 +14,35 @@ A lightweight, production-ready, enterprise-grade multi-agent AI framework. Buil
 | Dependencies | ~5 packages | ~50+ packages | ~30+ packages |
 | RAM usage | ~100MB | ~500MB | ~300MB |
 | LLM calls per task | 1 (you control) | 3-6 (hidden) | 1-3 |
+| LLM Streaming | Built-in | No | Partial |
+| Autonomous 24/7 daemon | Built-in | No | No |
+| Multi-tenancy | Built-in | No | No |
+| Plugin system | Built-in | No | No |
 | Hallucination detection | Built-in | No | No |
 | RBAC & Security | Built-in | No | No |
+| Content moderation | Built-in | No | No |
 | Self-learning | Built-in | No | No |
 | Cost management | Built-in | No | No |
 | PII detection | Built-in | No | No |
+| Admin dashboard | Built-in | No | No |
+| LLM Providers | 5 (Claude, OpenAI, Ollama, Groq, Gemini) | 2 | 2 |
 | Vendor lock-in | None | Yes | Some |
-
-## Features
-
-### Core
-- **Multi-Agent Orchestration** — Routing, pipelines, parallel execution, handoffs
-- **Advanced RAG Engine** — Hybrid search, query decomposition, re-ranking
-- **Memory System** — Short-term (session) + Long-term (persistent)
-- **Tool System** — Database, HTTP, Redis, RAG, or build your own
-- **LLM Agnostic** — Claude, OpenAI, or any provider
-
-### Enterprise (v0.2.0)
-- **Data Pipeline** — Ingestion, cleaning, PII detection, validation
-- **Security & RBAC** — Role-based access, permissions, audit logging, API keys
-- **Hallucination Detection** — Claim verification, faithfulness scoring
-- **Prompt Engineering** — Templates, versioning, context window management
-- **Self-Learning** — Reduce LLM dependency over time, training data collection
-- **Cost Management** — Budget tracking, model routing, response caching
-- **Scaling** — Rate limiting, latency optimization, smart model selection
-- **Guardrails** — Input/output safety checks, content filtering
 
 ## Installation
 
 ```bash
-pip install -e .             # Core only
-pip install -e ".[all]"      # All integrations
-pip install -e ".[qdrant,postgres,redis]"  # Pick what you need
+pip install agentx                    # Core only (from PyPI)
+pip install agentx[all]               # All integrations
+pip install agentx[openai,postgres]   # Pick what you need
+
+# Development
+git clone https://github.com/grtechlearn/agentx.git
+cd agentx && pip install -e ".[all]"
 ```
 
 ## Quick Start
 
-### 1. Simple Agent
+### 1. Simple Agent (3 lines)
 
 ```python
 import asyncio
@@ -65,197 +62,277 @@ async def main():
 asyncio.run(main())
 ```
 
-### 2. Multi-Agent Orchestrator
+### 2. Streaming Responses
 
 ```python
-from agentx import Orchestrator, RAGAgent, GuardrailAgent, SimpleAgent
-
-orchestrator = Orchestrator()
-orchestrator.register_many(
-    GuardrailAgent(),           # Safety checks
-    RAGAgent(rag_engine=rag),   # Knowledge-powered answers
-    SimpleAgent(config=...),    # General assistant
-)
-
-# Pipeline: guardrail → rag → respond
-orchestrator.add_pipeline("safe_answer", agents=["guardrail", "rag_agent"])
-
-result = await orchestrator.send("What is useEffect?")
+# Token-by-token streaming
+async for chunk in agent.think_stream("Explain microservices"):
+    print(chunk.content, end="", flush=True)
 ```
 
-### 3. Advanced RAG with Data Pipeline
+### 3. Multi-Agent Orchestrator
+
+```python
+from agentx import Orchestrator, SimpleAgent, AgentConfig
+
+orchestrator = Orchestrator()
+orchestrator.register(SimpleAgent(config=AgentConfig(name="coder", system_prompt="You write code")))
+orchestrator.register(SimpleAgent(config=AgentConfig(name="reviewer", system_prompt="You review code")))
+
+# Pipeline: coder -> reviewer
+orchestrator.add_pipeline("code_review", agents=["coder", "reviewer"])
+result = await orchestrator.run_pipeline("code_review", message)
+
+# Or parallel execution
+results = await orchestrator.run_parallel(["coder", "reviewer"], message)
+```
+
+### 4. 24/7 Autonomous Daemon
+
+```python
+from agentx import AgentXApp, AgentXDaemon, DaemonConfig, SimpleAgent, AgentConfig
+
+app = AgentXApp()
+await app.start()
+app.orchestrator.register(SimpleAgent(config=AgentConfig(name="bot")))
+
+daemon = AgentXDaemon(app=app, config=DaemonConfig(server_port=8080))
+
+# Scheduled jobs
+@daemon.every(minutes=5, name="health_check")
+async def check():
+    print(await app.health.check_all())
+
+@daemon.cron(hour=9, minute=0, name="daily_report")
+async def report():
+    await app.orchestrator.send("Generate daily summary")
+
+# Webhooks
+daemon.on_webhook("github", handler=github_handler)
+
+# Run forever (Ctrl+C to stop)
+await daemon.run_forever()
+```
+
+**API endpoints available at http://localhost:8080:**
+```
+POST /api/v1/chat         — Chat with agents
+POST /api/v1/stream       — Streaming chat (SSE)
+POST /api/v1/dispatch     — Dispatch to specific agent
+GET  /api/v1/health       — Health check
+GET  /api/v1/status       — System status
+GET  /api/v1/agents       — List agents
+GET  /api/v1/jobs         — Scheduled jobs
+GET  /api/v1/metrics      — System metrics
+GET  /dashboard           — Admin web dashboard
+WS   /ws                  — WebSocket (real-time + streaming)
+```
+
+### 5. Advanced RAG
 
 ```python
 from agentx import RAGEngine, IngestionPipeline, PIIDetector, FileLoader
 from agentx.rag import QdrantVectorStore, OpenAIEmbedder
 
-# Setup RAG
 rag = RAGEngine(
     embedder=OpenAIEmbedder(),
     vector_store=QdrantVectorStore(url="http://localhost:6333"),
 )
 
-# Ingest data with PII detection
+# Ingest with PII detection
 pipeline = IngestionPipeline(rag_engine=rag)
 pipeline.add_loader(FileLoader("./docs"))
-stats = await pipeline.run(detect_pii=True)
-# → {"loaded": 50, "pii_redacted": 3, "ingested": 245}
+await pipeline.run(detect_pii=True)
 
-# Search with strategies
-context = await rag.get_context("React hooks", strategy="hybrid")
-context = await rag.get_context("System design", strategy="rerank")
+# 5 retrieval strategies
+context = await rag.get_context("React hooks", strategy="hybrid")    # BM25 + semantic
+context = await rag.get_context("Design patterns", strategy="rerank")  # Cross-encoder
+context = await rag.get_context("Complex query", strategy="rewrite")   # Query rewriting
 ```
 
-### 4. Security & RBAC
+### 6. Security & RBAC
 
 ```python
-from agentx import RBACManager, User, Role, Permission
+from agentx import AuthGateway, RBACManager, User, Role, InjectionGuard, ContentModerator
 
+# JWT Authentication
+auth = AuthGateway(secret_key="your-secret")
+token = auth.create_token(user_id="user-1", role="admin")
+result = auth.authenticate(token, check_injection=True, query=user_input)
+
+# RBAC with 5 roles, 18 permissions
 rbac = RBACManager()
-rbac.add_user(User(id="user-1", name="Ramesh", role=Role.ADMIN))
-rbac.add_user(User(id="user-2", name="Student", role=Role.USER))
+rbac.add_user(User(id="user-1", role=Role.ADMIN))
+rbac.require("user-1", Permission.RAG_INGEST)  # Check permission
 
-# Check permissions
-rbac.require("user-1", Permission.RAG_INGEST)    # ✅ Admin can ingest
-rbac.require("user-2", Permission.ADMIN_USERS)    # ❌ PermissionError
+# Injection guard (prompt injection, SQL, XSS, command injection, path traversal)
+guard = InjectionGuard()
+result = guard.check("ignore previous instructions; DROP TABLE users")
+# result.blocked = True, result.threat_type = "prompt_injection"
 
-# Rate limiting
-rbac.check_rate_limit("user-2", max_requests=60)
-
-# Audit log
-log = rbac.get_audit_log(user_id="user-2")
+# Content moderation (profanity, sexual, abuse, violence, drugs, custom)
+moderator = ContentModerator(ModerationConfig.strict())
+result = moderator.check("some offensive text")
 ```
 
-### 5. Hallucination Detection
+### 7. Multi-Tenancy
 
 ```python
-from agentx import HallucinationDetector, ResponseEvaluator
+from agentx import TenantManager, Tenant, TenantPlan
 
-detector = HallucinationDetector(llm=my_llm)
-result = await detector.detect(
-    response="useEffect runs before DOM paint",   # Wrong!
-    sources=["useEffect runs AFTER the DOM has been painted..."],
-    query="When does useEffect run?"
-)
-# result.hallucination_detected = True
-# result.faithfulness = 0.3
-# result.hallucination_details = ["Claim contradicts sources"]
+tenant_mgr = TenantManager()
+await tenant_mgr.create_tenant(Tenant(
+    id="org-acme", name="Acme Corp", plan="pro"
+))
+
+# Enforce limits per tenant
+tenant_mgr.check_budget(tenant)        # Monthly spend cap
+tenant_mgr.check_rate_limit(tenant)    # Daily request limit
+tenant_mgr.check_model_access(tenant, "claude-opus-4-6")  # Model restrictions
 ```
 
-### 6. Cost Management & Self-Learning
+### 8. Plugin System
+
+```python
+from agentx import AgentXPlugin, PluginManager
+
+class MyPlugin(AgentXPlugin):
+    name = "analytics"
+    version = "1.0.0"
+
+    async def setup(self, app):
+        app.orchestrator.register(MyAnalyticsAgent())
+
+    async def on_message(self, message, context):
+        # Middleware — runs before every message
+        log_analytics(message)
+        return message
+
+plugins = PluginManager(app)
+plugins.register(MyPlugin())
+await plugins.setup_all()
+
+# Auto-discover from installed packages
+plugins.discover()  # Finds plugins via entry_points
+```
+
+### 9. Cost Management & Self-Learning
 
 ```python
 from agentx import ModelRouter, SelfLearner, CostTracker
 
-# Smart model routing (cheap model for simple tasks)
+# Smart model routing
 router = ModelRouter()
 router.setup_defaults()
-model = router.select_model(
-    task_complexity="simple",
-    prefer="cost",              # Use cheapest model that works
-)
-# → "claude-haiku" for simple, "claude-sonnet" for complex
+model = router.select_model(task_complexity="simple", prefer="cost")
+# -> Haiku for simple, Sonnet for complex, Opus for critical
 
 # Self-learning (reduce LLM calls over time)
 learner = SelfLearner()
 cached = await learner.check("What is useState?")
 if cached:
     return cached  # No LLM call needed!
-else:
-    response = await llm.generate(...)
-    await learner.learn("What is useState?", response, score=0.95)
 
-# Cost tracking
+# Cost tracking with budget alerts
 tracker = CostTracker()
-tracker.track("claude-sonnet-4-6", input_tokens=500, output_tokens=200, key="user-1")
-print(tracker.report())
+tracker.track("claude-sonnet-4-6", input_tokens=500, output_tokens=200)
+print(f"Daily spend: ${tracker.get_cost()}")
 ```
 
-### 7. Prompt Engineering
+### 10. LLM Providers
 
 ```python
-from agentx import PromptTemplate, PromptManager, ContextManager
+from agentx import create_llm, LLMConfig
 
-# Template management
-pm = PromptManager()
-pm.register(PromptTemplate(
-    name="evaluator",
-    version="1.0",
-    template="Evaluate this {{technology}} answer:\n{{answer}}\n\nContext:\n{{context}}",
-    variables=["technology", "answer", "context"],
-))
-prompt = pm.render("evaluator", technology="React", answer="...", context="...")
+# Claude (Anthropic)
+llm = create_llm(provider="anthropic", model="claude-sonnet-4-6")
 
-# Context window management
-cm = ContextManager(max_context_tokens=100000)
-fitted = cm.fit_context(
-    system_prompt="You are an expert...",
-    rag_context=long_context,
-    conversation=messages,
-)
-# Automatically truncates to fit token limit
+# OpenAI
+llm = create_llm(provider="openai", model="gpt-4o")
+
+# Ollama (local)
+llm = create_llm(provider="ollama", model="llama3.2")
+
+# Groq (fast inference)
+llm = create_llm(provider="groq", model="llama-3.3-70b-versatile")
+
+# Gemini (Google)
+llm = create_llm(provider="gemini", model="gemini-2.0-flash")
+
+# Multi-layer: different models for different tasks
+from agentx import AgentXConfig, LLMConfig as LLMSetup
+config = LLMSetup.cost_optimized()  # Haiku for routing, Sonnet for agent, Opus for eval
+```
+
+## Docker Deployment
+
+```bash
+# Quick start
+docker compose up -d
+
+# Or standalone
+docker build -t agentx .
+docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-... agentx
+```
+
+## CLI
+
+```bash
+# Run the daemon
+python -m agentx.daemon --port 8080
+python -m agentx.daemon --full           # All features enabled
+python -m agentx.daemon --env            # Config from environment
+
+# Or with the CLI entry point
+agentx-daemon --port 8080 --api-key secret
 ```
 
 ## Architecture
 
 ```
 agentx/
-├── core/                    # Agent framework foundation
-│   ├── agent.py             # BaseAgent, SimpleAgent, lifecycle hooks
-│   ├── orchestrator.py      # Routing, pipelines, parallel execution
-│   ├── message.py           # Inter-agent messaging & handoffs
-│   ├── context.py           # Shared execution context
-│   ├── llm.py               # LLM providers (Claude, OpenAI)
-│   └── tool.py              # Tool system & @tool decorator
-│
-├── config/                  # Phase 1: Configuration & Governance
-│   └── settings.py          # AgentXConfig, budgets, data governance, metrics
-│
-├── pipeline/                # Phase 2: Data Pipeline
-│   └── ingestion.py         # PII detection, validation, cleaning, loaders
-│
-├── rag/                     # Phase 3 & 4: Embeddings & Retrieval
-│   └── engine.py            # Hybrid search, re-ranking, decomposition, Qdrant
-│
-├── prompts/                 # Phase 5: Generation & Optimization
-│   └── manager.py           # Templates, context management, response cache
-│
-├── evaluation/              # Phase 5: Quality & Safety
-│   └── metrics.py           # Hallucination detection, cost tracking
-│
-├── security/                # Phase 6: Security & RBAC
-│   └── rbac.py              # Roles, permissions, audit, rate limiting
-│
-├── scaling/                 # Phase 6: Operations
-│   └── optimizer.py         # Model routing, self-learning, latency tracking
-│
-├── agents/                  # Reusable agent patterns
-│   ├── patterns.py          # Router, Guardrail, Summarizer, Classifier, RAG
-│   ├── interviewer.py       # Example: Technical interviewer
-│   ├── evaluator.py         # Example: Answer evaluator
-│   └── ...                  # More domain agents
-│
-├── memory/                  # Short-term + Long-term memory
-│   └── store.py
-│
-├── tools/                   # Built-in tools
-│   └── builtin.py           # Database, HTTP, Redis, RAG search
-│
-└── utils/                   # Observability
-    └── logger.py            # Structured logging & metrics
+  core/           # Agent, Orchestrator, Message, Tool, LLM (5 providers)
+  config/         # Centralized config (100+ options, env vars, presets)
+  db/             # SQLite + PostgreSQL (13 tables, auto-migrate)
+  memory/         # Short-term (in-memory) + Long-term (DB-backed)
+  rag/            # Hybrid BM25+semantic, cross-encoder, semantic cache
+  pipeline/       # Ingestion, PII detection, knowledge freshness, GDPR
+  security/       # JWT, RBAC, injection guard, moderation, multi-tenancy
+  evaluation/     # RAGAS metrics, hallucination guard, cost tracking
+  scaling/        # Circuit breaker, task queue, tracing, model router
+  prompts/        # Templates, tiktoken context fitting, response cache
+  tools/          # MCP integration (stdio, SSE, HTTP), built-in tools
+  agents/         # Pre-built patterns (Router, Guardrail, RAG, Classifier)
+  daemon/         # 24/7 runner, scheduler, API server, file watcher
+  plugins/        # Extension system with auto-discovery
+  dashboard/      # Built-in admin web UI
 ```
 
-## 6-Phase Architecture
+## Key Numbers
 
-| Phase | Module | What It Handles |
-|-------|--------|----------------|
-| **Phase 1** | `config/` | System metrics, cost modeling, data governance, budgets |
-| **Phase 2** | `pipeline/` | Data ingestion, PII detection, cleaning, validation |
-| **Phase 3** | `rag/` | Embedding models, vector store abstraction, chunking |
-| **Phase 4** | `rag/` | Hybrid retrieval, re-ranking, query decomposition |
-| **Phase 5** | `prompts/` + `evaluation/` | Generation, prompt templates, hallucination detection |
-| **Phase 6** | `security/` + `scaling/` | RBAC, cost management, self-learning, latency optimization |
+| Metric | Value |
+|--------|-------|
+| Python modules | 57+ |
+| Classes | 80+ |
+| Tests | 334 (all passing) |
+| Config options | 100+ |
+| Database tables | 13 |
+| API endpoints | 14 (REST + SSE + WebSocket) |
+| LLM providers | 5 |
+| Security patterns | 50+ regex |
+| Pre-built agents | 10 |
+
+## Documentation
+
+- [Technical Specification](docs/TECHNICAL_SPECIFICATION.md) (2,090 lines)
+- [CHANGELOG](CHANGELOG.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Examples](examples/)
 
 ## License
 
 MIT
+
+---
+
+Built by [GR Tech Learn](https://aimediahub.in) | [GitHub](https://github.com/grtechlearn/agentx)

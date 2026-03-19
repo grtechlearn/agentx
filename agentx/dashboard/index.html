@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentX Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-card: #21242f;
+  --bg-input: #2a2d3a;
+  --border: #2e3140;
+  --text-primary: #e4e6eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --blue: #3b82f6;
+  --radius: 8px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
+
+.logo span {
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.running {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+}
+
+.status-badge.stopped {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.refresh-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Main layout */
+.main {
+  padding: 20px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.card-body {
+  padding: 18px;
+}
+
+.card.chat-card {
+  grid-column: 1 / -1;
+}
+
+/* Stat rows */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-row:last-child { border-bottom: none; }
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.stat-value {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Metric boxes */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.metric-box {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+tr:last-child td { border-bottom: none; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-green { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+.badge-red { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+.badge-yellow { background: rgba(245, 158, 11, 0.15); color: var(--yellow); }
+.badge-blue { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+.badge-gray { background: rgba(107, 114, 128, 0.15); color: var(--text-muted); }
+
+/* Buttons */
+.btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover { background: var(--border); }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+/* Health checks */
+.health-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.health-item:last-child { border-bottom: none; }
+
+.health-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Chat */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-msg {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  max-width: 80%;
+  word-break: break-word;
+}
+
+.chat-msg.user {
+  background: var(--accent);
+  color: #fff;
+  align-self: flex-end;
+}
+
+.chat-msg.agent {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  align-self: flex-start;
+}
+
+.chat-msg.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  align-self: center;
+  font-size: 12px;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  outline: none;
+}
+
+.chat-input:focus { border-color: var(--accent); }
+
+.chat-input::placeholder { color: var(--text-muted); }
+
+/* Empty states */
+.empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Responsive */
+@media (max-width: 480px) {
+  .grid { grid-template-columns: 1fr; }
+  .header { flex-direction: column; gap: 8px; padding: 10px 14px; }
+  .main { padding: 12px; }
+  .metric-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">AgentX <span>Dashboard</span></div>
+    <div id="serverStatus" class="status-badge stopped">
+      <div class="status-dot"></div>
+      <span>Connecting...</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="refresh-indicator">
+      Auto-refresh: <strong>10s</strong>
+    </div>
+    <div id="lastUpdate">--</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="grid">
+
+    <!-- System Status -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">System Status</div>
+      </div>
+      <div class="card-body" id="statusPanel">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Metrics</div>
+      </div>
+      <div class="card-body" id="metricsPanel">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Agents -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Agents</div>
+        <span id="agentCount" class="badge badge-blue">0</span>
+      </div>
+      <div class="card-body" id="agentsPanel">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Health -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Health</div>
+        <span id="healthBadge" class="badge badge-gray">--</span>
+      </div>
+      <div class="card-body" id="healthPanel">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Jobs -->
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-header">
+        <div class="card-title">Scheduled Jobs</div>
+        <span id="jobCount" class="badge badge-blue">0</span>
+      </div>
+      <div class="card-body" id="jobsPanel">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="card chat-card">
+      <div class="card-header">
+        <div class="card-title">Chat</div>
+        <select id="chatAgent" class="btn" style="min-width: 120px;">
+          <option value="">Default Agent</option>
+        </select>
+      </div>
+      <div class="card-body">
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-row">
+            <input type="text" class="chat-input" id="chatInput" placeholder="Type a message to test an agent..." />
+            <button class="btn btn-primary" id="chatSend" style="padding: 10px 20px; font-size: 13px;">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // --- Config ---
+  var BASE_URL = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '8080');
+  var REFRESH_INTERVAL = 10000;
+  var refreshTimer = null;
+
+  // --- Helpers ---
+  function $(id) { return document.getElementById(id); }
+
+  function api(path, opts) {
+    var url = BASE_URL + path;
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    opts.headers['Content-Type'] = 'application/json';
+    return fetch(url, opts)
+      .then(function(r) { return r.json(); })
+      .catch(function(e) { return { status: 'error', message: e.message }; });
+  }
+
+  function formatUptime(seconds) {
+    if (!seconds || seconds <= 0) return '--';
+    var d = Math.floor(seconds / 86400);
+    var h = Math.floor((seconds % 86400) / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = Math.floor(seconds % 60);
+    var parts = [];
+    if (d > 0) parts.push(d + 'd');
+    if (h > 0) parts.push(h + 'h');
+    if (m > 0) parts.push(m + 'm');
+    parts.push(s + 's');
+    return parts.join(' ');
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function statusBadge(status) {
+    if (!status) return '<span class="badge badge-gray">unknown</span>';
+    var s = String(status).toLowerCase();
+    if (s === 'running' || s === 'active' || s === 'healthy' || s === 'idle') {
+      return '<span class="badge badge-green">' + escapeHtml(status) + '</span>';
+    } else if (s === 'paused' || s === 'pending' || s === 'waiting') {
+      return '<span class="badge badge-yellow">' + escapeHtml(status) + '</span>';
+    } else if (s === 'error' || s === 'failed' || s === 'unhealthy' || s === 'stopped') {
+      return '<span class="badge badge-red">' + escapeHtml(status) + '</span>';
+    }
+    return '<span class="badge badge-gray">' + escapeHtml(status) + '</span>';
+  }
+
+  function formatTime(ts) {
+    if (!ts) return '--';
+    var d;
+    if (typeof ts === 'number') {
+      d = new Date(ts * 1000);
+    } else {
+      d = new Date(ts);
+    }
+    if (isNaN(d.getTime())) return '--';
+    return d.toLocaleTimeString();
+  }
+
+  // --- Panels ---
+
+  function updateStatus(data) {
+    var el = $('statusPanel');
+    var badge = $('serverStatus');
+
+    if (!data || data.status === 'error') {
+      badge.className = 'status-badge stopped';
+      badge.querySelector('span').textContent = 'Disconnected';
+      el.innerHTML = '<div class="empty">Cannot reach server</div>';
+      return;
+    }
+
+    var d = data.data || {};
+    var server = d.server || {};
+    var app = d.app || {};
+    var daemon = d.daemon || {};
+
+    var running = server.running !== false;
+    badge.className = 'status-badge ' + (running ? 'running' : 'stopped');
+    badge.querySelector('span').textContent = running ? 'Running' : 'Stopped';
+
+    var rows = '';
+    rows += statRow('Uptime', formatUptime(server.uptime_seconds));
+    rows += statRow('Host', escapeHtml((server.host || '0.0.0.0') + ':' + (server.port || 8080)));
+    rows += statRow('Requests', server.requests != null ? server.requests : '--');
+    rows += statRow('Errors', server.errors != null ? server.errors : '--');
+
+    if (app.name) rows += statRow('App', escapeHtml(app.name));
+    if (app.version) rows += statRow('Version', escapeHtml(app.version));
+    if (app.environment) rows += statRow('Environment', escapeHtml(app.environment));
+    if (daemon.pid) rows += statRow('PID', daemon.pid);
+
+    el.innerHTML = rows;
+  }
+
+  function statRow(label, value) {
+    return '<div class="stat-row"><span class="stat-label">' + label + '</span><span class="stat-value">' + value + '</span></div>';
+  }
+
+  function updateMetrics(data) {
+    var el = $('metricsPanel');
+    if (!data || data.status === 'error') {
+      el.innerHTML = '<div class="empty">No metrics available</div>';
+      return;
+    }
+
+    var d = data.data || {};
+    var server = d.server || {};
+    var app = d.app || {};
+
+    var totalReqs = server.total_requests != null ? server.total_requests : '--';
+    var errorRate = server.error_rate != null ? (server.error_rate * 100).toFixed(1) + '%' : '--';
+    var totalErrors = server.total_errors != null ? server.total_errors : '--';
+    var uptime = formatUptime(server.uptime_seconds);
+
+    var costStr = '--';
+    if (app.total_cost != null) {
+      costStr = '$' + Number(app.total_cost).toFixed(4);
+    }
+
+    el.innerHTML = '<div class="metric-grid">' +
+      metricBox(totalReqs, 'Requests') +
+      metricBox(errorRate, 'Error Rate') +
+      metricBox(totalErrors, 'Errors') +
+      metricBox(costStr, 'Total Cost') +
+      '</div>';
+  }
+
+  function metricBox(value, label) {
+    return '<div class="metric-box"><div class="metric-value">' + value + '</div><div class="metric-label">' + label + '</div></div>';
+  }
+
+  function updateAgents(data) {
+    var el = $('agentsPanel');
+    var countEl = $('agentCount');
+    var selectEl = $('chatAgent');
+
+    if (!data || data.status === 'error') {
+      el.innerHTML = '<div class="empty">No agents registered</div>';
+      countEl.textContent = '0';
+      return;
+    }
+
+    var agents = data.data || [];
+    countEl.textContent = agents.length;
+
+    if (agents.length === 0) {
+      el.innerHTML = '<div class="empty">No agents registered</div>';
+      return;
+    }
+
+    // Update chat agent selector
+    var currentVal = selectEl.value;
+    selectEl.innerHTML = '<option value="">Default Agent</option>';
+    agents.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = a.name;
+      opt.textContent = a.name;
+      selectEl.appendChild(opt);
+    });
+    selectEl.value = currentVal;
+
+    var html = '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Messages</th></tr></thead><tbody>';
+    agents.forEach(function(a) {
+      html += '<tr>' +
+        '<td><strong>' + escapeHtml(a.name || '--') + '</strong></td>' +
+        '<td>' + escapeHtml(a.role || '--') + '</td>' +
+        '<td>' + statusBadge(a.status) + '</td>' +
+        '<td>' + (a.messages_processed != null ? a.messages_processed : '--') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  }
+
+  function updateHealth(data) {
+    var el = $('healthPanel');
+    var badge = $('healthBadge');
+
+    if (!data || data.status === 'error') {
+      el.innerHTML = '<div class="empty">Health data unavailable</div>';
+      badge.className = 'badge badge-gray';
+      badge.textContent = 'Unknown';
+      return;
+    }
+
+    var d = data.data || {};
+    var healthy = d.healthy !== false;
+    var checks = d.checks || {};
+
+    badge.className = 'badge ' + (healthy ? 'badge-green' : 'badge-red');
+    badge.textContent = healthy ? 'Healthy' : 'Unhealthy';
+
+    var keys = Object.keys(checks);
+    if (keys.length === 0) {
+      el.innerHTML = '<div class="empty">No health checks configured</div>';
+      return;
+    }
+
+    var html = '';
+    keys.forEach(function(key) {
+      var check = checks[key];
+      var st = (typeof check === 'object') ? (check.status || 'unknown') : String(check);
+      html += '<div class="health-item"><span class="health-name">' + escapeHtml(key) + '</span>' + statusBadge(st) + '</div>';
+    });
+    el.innerHTML = html;
+  }
+
+  function updateJobs(data) {
+    var el = $('jobsPanel');
+    var countEl = $('jobCount');
+
+    if (!data || data.status === 'error') {
+      el.innerHTML = '<div class="empty">Scheduler not available</div>';
+      countEl.textContent = '0';
+      return;
+    }
+
+    var jobs = data.data || [];
+    if (!Array.isArray(jobs)) jobs = [];
+    countEl.textContent = jobs.length;
+
+    if (jobs.length === 0) {
+      el.innerHTML = '<div class="empty">No scheduled jobs</div>';
+      return;
+    }
+
+    var html = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>Schedule</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Actions</th></tr></thead><tbody>';
+    jobs.forEach(function(j) {
+      var jobId = j.id || j.job_id || '--';
+      var schedule = j.schedule || j.cron || '--';
+      var st = j.status || j.state || 'unknown';
+      var lastRun = formatTime(j.last_run || j.last_run_at);
+      var nextRun = formatTime(j.next_run || j.next_run_at);
+      var isPaused = st === 'paused';
+
+      html += '<tr>' +
+        '<td><strong>' + escapeHtml(String(jobId)) + '</strong></td>' +
+        '<td><code style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(String(schedule)) + '</code></td>' +
+        '<td>' + statusBadge(st) + '</td>' +
+        '<td>' + lastRun + '</td>' +
+        '<td>' + nextRun + '</td>' +
+        '<td>' +
+        (isPaused
+          ? '<button class="btn" onclick="window._dashboard.resumeJob(\'' + escapeHtml(String(jobId)) + '\')">Resume</button>'
+          : '<button class="btn" onclick="window._dashboard.pauseJob(\'' + escapeHtml(String(jobId)) + '\')">Pause</button>') +
+        '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  }
+
+  // --- Job actions ---
+  function pauseJob(jobId) {
+    api('/api/v1/jobs/' + encodeURIComponent(jobId) + '/pause', { method: 'POST', body: '{}' })
+      .then(function() { refresh(); });
+  }
+
+  function resumeJob(jobId) {
+    api('/api/v1/jobs/' + encodeURIComponent(jobId) + '/resume', { method: 'POST', body: '{}' })
+      .then(function() { refresh(); });
+  }
+
+  // --- Chat ---
+  function sendChat() {
+    var input = $('chatInput');
+    var msg = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    addChatMsg(msg, 'user');
+
+    var body = { message: msg };
+    var agent = $('chatAgent').value;
+    if (agent) body.agent = agent;
+
+    api('/api/v1/chat', { method: 'POST', body: JSON.stringify(body) })
+      .then(function(data) {
+        if (data.status === 'error') {
+          addChatMsg(data.message || 'Error', 'error');
+        } else {
+          var resp = (data.data && data.data.response) || JSON.stringify(data.data);
+          addChatMsg(resp, 'agent');
+        }
+      });
+  }
+
+  function addChatMsg(text, type) {
+    var container = $('chatMessages');
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + type;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  $('chatSend').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChat();
+    }
+  });
+
+  // --- Refresh ---
+  function refresh() {
+    Promise.all([
+      api('/api/v1/status'),
+      api('/api/v1/metrics'),
+      api('/api/v1/agents'),
+      api('/api/v1/health'),
+      api('/api/v1/jobs')
+    ]).then(function(results) {
+      updateStatus(results[0]);
+      updateMetrics(results[1]);
+      updateAgents(results[2]);
+      updateHealth(results[3]);
+      updateJobs(results[4]);
+      $('lastUpdate').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+    });
+  }
+
+  // --- Init ---
+  refresh();
+  refreshTimer = setInterval(refresh, REFRESH_INTERVAL);
+
+  // Expose for job buttons
+  window._dashboard = {
+    pauseJob: pauseJob,
+    resumeJob: resumeJob
+  };
+})();
+</script>
+</body>
+</html>

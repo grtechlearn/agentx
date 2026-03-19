@@ -36,6 +36,7 @@ from .core import (
     Orchestrator, Pipeline,
     BaseTool, FunctionTool, ToolResult, tool,
     LLMConfig, create_llm,
+    OllamaProvider, GroqProvider, GeminiProvider,
 )
 
 # --- Memory ---
@@ -124,6 +125,7 @@ __all__ = [
     "Orchestrator", "Pipeline",
     "BaseTool", "FunctionTool", "ToolResult", "tool",
     "LLMConfig", "StreamChunk", "create_llm",
+    "OllamaProvider", "GroqProvider", "GeminiProvider",
     # Memory
     "AgentMemory", "ShortTermMemory", "LongTermMemory", "MemoryEntry",
     # RAG

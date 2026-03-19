@@ -474,11 +474,18 @@ def create_llm(config: LLMConfig | None = None, **kwargs: Any) -> BaseLLMProvide
     """Factory to create LLM provider."""
     if config is None:
         config = LLMConfig(**kwargs)
+
+    from .providers import OllamaProvider, GroqProvider, GeminiProvider
+
     providers = {
         "anthropic": AnthropicProvider,
         "claude": AnthropicProvider,
         "openai": OpenAIProvider,
         "gpt": OpenAIProvider,
+        "ollama": OllamaProvider,
+        "groq": GroqProvider,
+        "gemini": GeminiProvider,
+        "google": GeminiProvider,
     }
     provider_cls = providers.get(config.provider.lower())
     if not provider_cls:
