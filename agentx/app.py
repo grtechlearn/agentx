@@ -54,6 +54,7 @@ from .scaling.optimizer import SelfLearner, ModelRouter
 from .scaling.tracing import Tracer, CircuitBreaker, TaskQueue, HealthCheck, LatencyBudget
 from .security.rbac import RBACManager
 from .security.auth import AuthGateway, InjectionGuard, NamespaceManager
+from .security.moderation import ContentModerator, ModerationConfig, VulnerabilityScanner, CategoryConfig, ModerationAction, Severity
 
 logger = logging.getLogger("agentx")
 
@@ -116,6 +117,8 @@ class AgentXApp:
         self.finetune: FineTunePipeline | None = None
         self.pii_masker: RuntimePIIMasker | None = None
         self.citations: CitationManager | None = None
+        self.moderator: ContentModerator | None = None
+        self.vulnerability_scanner: VulnerabilityScanner | None = None
 
         # LLM provider cache — lazily created per layer
         self._llm_cache: dict[str, BaseLLMProvider] = {}
@@ -230,6 +233,53 @@ class AgentXApp:
         # 21. Citation Manager
         self.citations = CitationManager()
 
+        # 22. Content Moderation
+        mod_cfg = self.config.moderation
+        if mod_cfg.enabled:
+            moderation_config = ModerationConfig(
+                enabled=True,
+                severity_threshold=Severity(mod_cfg.severity_threshold),
+                default_action=ModerationAction(mod_cfg.default_action),
+                categories={
+                    "profanity": CategoryConfig(enabled=mod_cfg.block_profanity, action=ModerationAction.BLOCK),
+                    "sexual": CategoryConfig(enabled=mod_cfg.block_sexual, action=ModerationAction.BLOCK, severity=Severity.HIGH),
+                    "abuse": CategoryConfig(enabled=mod_cfg.block_abuse, action=ModerationAction.BLOCK, severity=Severity.HIGH),
+                    "violence": CategoryConfig(enabled=mod_cfg.block_violence, action=ModerationAction.WARN),
+                    "self_harm": CategoryConfig(enabled=mod_cfg.block_self_harm, action=ModerationAction.BLOCK, severity=Severity.CRITICAL),
+                    "drugs": CategoryConfig(enabled=mod_cfg.block_drugs, action=ModerationAction.WARN),
+                    "custom": CategoryConfig(enabled=bool(mod_cfg.custom_blocked_words), custom_words=mod_cfg.custom_blocked_words),
+                },
+                custom_blocked_words=mod_cfg.custom_blocked_words,
+                custom_blocked_patterns=mod_cfg.custom_blocked_patterns,
+                whitelist_words=mod_cfg.whitelist_words,
+                check_input=mod_cfg.check_input,
+                check_output=mod_cfg.check_output,
+                log_violations=mod_cfg.log_violations,
+                max_violations_before_ban=mod_cfg.max_violations_before_ban,
+            )
+            self.moderator = ContentModerator(moderation_config)
+        else:
+            self.moderator = ContentModerator(ModerationConfig(enabled=False))
+
+        # 23. Vulnerability Scanner
+        if mod_cfg.vulnerability_scanning:
+            self.vulnerability_scanner = VulnerabilityScanner(
+                check_code_injection=mod_cfg.block_code_injection,
+                check_credentials=mod_cfg.block_credential_exposure,
+                check_unsafe_urls=mod_cfg.block_unsafe_urls,
+                block_on_critical=True,
+            )
+        else:
+            self.vulnerability_scanner = VulnerabilityScanner(
+                check_code_injection=False,
+                check_credentials=False,
+                check_unsafe_urls=False,
+                check_serialization=False,
+                check_info_disclosure=False,
+                check_insecure_patterns=False,
+            )
+        logger.info(f"Content moderation: {'enabled' if mod_cfg.enabled else 'disabled'}")
+
         self._started = True
         logger.info(f"{self.config.app_name} started successfully")
         return self
@@ -331,6 +381,8 @@ class AgentXApp:
                 "finetune_pipeline": True,
                 "runtime_pii_masking": self.config.governance.detect_pii,
                 "citation_management": True,
+                "content_moderation": self.config.moderation.enabled,
+                "vulnerability_scanning": self.config.moderation.vulnerability_scanning,
             },
         }
 

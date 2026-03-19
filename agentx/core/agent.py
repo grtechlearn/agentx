@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .context import AgentContext
-from .llm import BaseLLMProvider, LLMResponse, create_llm, LLMConfig
+from .llm import BaseLLMProvider, LLMResponse, StreamChunk, create_llm, LLMConfig
 from .message import AgentMessage, MessageType
 from .tool import BaseTool, ToolResult
 
@@ -135,6 +135,52 @@ class BaseAgent(ABC):
             response = await self._handle_tool_calls(response, messages, sys_prompt)
 
         return response
+
+    async def think_stream(
+        self,
+        prompt: str,
+        context: AgentContext | None = None,
+        system: str | None = None,
+    ):
+        """Stream a response from the LLM token by token.
+
+        Usage:
+            async for chunk in agent.think_stream("Hello"):
+                print(chunk.content, end="")
+        """
+        messages: list[dict[str, str]] = []
+        if context:
+            messages.extend(context.conversation_history)
+        messages.append({"role": "user", "content": prompt})
+        sys_prompt = system or self.config.system_prompt
+
+        async for chunk in self.llm.stream(messages=messages, system=sys_prompt):
+            yield chunk
+
+    async def think_with_callback(
+        self,
+        prompt: str,
+        context: AgentContext | None = None,
+        system: str | None = None,
+        on_chunk: Any = None,
+    ) -> LLMResponse:
+        """Stream with a callback per token, returns final LLMResponse.
+
+        Usage:
+            response = await agent.think_with_callback(
+                "Hello", on_chunk=lambda c: print(c.content, end="")
+            )
+        """
+        messages: list[dict[str, str]] = []
+        if context:
+            messages.extend(context.conversation_history)
+        messages.append({"role": "user", "content": prompt})
+        sys_prompt = system or self.config.system_prompt
+
+        return await self.llm.generate_or_stream(
+            messages=messages, system=sys_prompt,
+            stream=True, on_chunk=on_chunk,
+        )
 
     async def think_json(
         self,

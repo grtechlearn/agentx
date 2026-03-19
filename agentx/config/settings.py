@@ -233,6 +233,68 @@ class CacheConfig(BaseModel):
     similarity_threshold: float = 0.95  # cache hit if query >95% similar
 
 
+class ContentModerationConfig(BaseModel):
+    """
+    Content moderation configuration — pluggable like LLM models.
+
+    Presets: strict, moderate, permissive, disabled
+    Categories: profanity, sexual, abuse, violence, self_harm, drugs, custom
+    Actions per category: block, warn, redact, log
+    """
+
+    enabled: bool = True
+    severity_threshold: str = "low"      # low, medium, high, critical
+    default_action: str = "block"        # block, warn, redact, log
+
+    # Per-category enable/disable + action override
+    block_profanity: bool = True
+    block_sexual: bool = True
+    block_abuse: bool = True
+    block_violence: bool = False         # warn by default
+    block_self_harm: bool = True
+    block_drugs: bool = False
+
+    # Custom word lists
+    custom_blocked_words: list[str] = Field(default_factory=list)
+    custom_blocked_patterns: list[str] = Field(default_factory=list)
+    whitelist_words: list[str] = Field(default_factory=list)
+
+    # Behavior
+    check_input: bool = True
+    check_output: bool = True
+    log_violations: bool = True
+    max_violations_before_ban: int = 0   # 0 = no auto-ban
+
+    # Vulnerability scanning
+    vulnerability_scanning: bool = True
+    block_credential_exposure: bool = True
+    block_code_injection: bool = True
+    block_unsafe_urls: bool = True
+
+    @classmethod
+    def strict(cls) -> ContentModerationConfig:
+        """Block all categories."""
+        return cls(
+            enabled=True, block_profanity=True, block_sexual=True,
+            block_abuse=True, block_violence=True, block_self_harm=True,
+            block_drugs=True, vulnerability_scanning=True,
+        )
+
+    @classmethod
+    def moderate(cls) -> ContentModerationConfig:
+        """Block sexual/abuse, warn on profanity/violence."""
+        return cls(
+            enabled=True, block_profanity=True, block_sexual=True,
+            block_abuse=True, block_violence=False, block_self_harm=True,
+            block_drugs=False,
+        )
+
+    @classmethod
+    def disabled(cls) -> ContentModerationConfig:
+        """No moderation."""
+        return cls(enabled=False)
+
+
 class SelfLearningConfig(BaseModel):
     """Configuration for self-learning and reducing LLM dependency."""
 
@@ -271,7 +333,7 @@ class AgentXConfig(BaseModel):
     # Environment
     env: Environment = Environment.DEVELOPMENT
     app_name: str = "AgentX"
-    version: str = "0.2.0"
+    version: str = "0.6.0"
     debug: bool = False
 
     # Database
@@ -293,6 +355,7 @@ class AgentXConfig(BaseModel):
     metrics: SystemMetrics = Field(default_factory=SystemMetrics)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     self_learning: SelfLearningConfig = Field(default_factory=SelfLearningConfig)
+    moderation: ContentModerationConfig = Field(default_factory=ContentModerationConfig)
 
     # Paths
     data_dir: str = "./data"
@@ -353,4 +416,5 @@ class AgentXConfig(BaseModel):
             governance=DataGovernance(detect_pii=True, encrypt_at_rest=True),
             metrics=SystemMetrics(max_hallucination_tolerance=0.05),
             cache=CacheConfig(enabled=True, ttl_seconds=7200),
+            moderation=ContentModerationConfig.strict(),
         )

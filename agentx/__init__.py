@@ -16,10 +16,18 @@ Features:
 - Vector Stores (Qdrant, Chroma, Pinecone + local embeddings)
 - Data Governance (retention enforcement, GDPR deletion, PII masking at query time)
 - Citation Management (source reliability scoring, formatted citations)
+- Content Moderation (profanity, abuse, sexual content filtering — configurable)
+- Vulnerability Scanning (credential exposure, code injection, unsafe URLs)
 - MCP Support (connect to any MCP tool server)
+- Autonomous 24/7 Daemon (scheduler, API server, file watchers, watchdog)
+- HTTP/WebSocket API Server (REST + real-time agent communication)
+- Job Scheduling (interval, cron, delayed, event-triggered)
+- File System Watching (auto-ingestion on file changes)
+- Message Queue Integration (Redis pub/sub)
+- Process Watchdog (auto-restart failed subsystems)
 """
 
-__version__ = "0.4.0"
+__version__ = "0.6.0"
 
 # --- Core ---
 from .core import (
@@ -62,7 +70,13 @@ from .pipeline import (
 from .security import (
     RBACManager, User, Role, Permission,
     AuthGateway, AuthResult, InjectionGuard, InjectionResult, NamespaceManager, JWTToken,
+    ContentModerator, ModerationConfig, ModerationResult, ModerationAction,
+    VulnerabilityScanner, VulnerabilityResult, CategoryConfig, Severity,
+    TenantManager, Tenant, TenantConfig, TenantPlan,
 )
+
+# --- Plugins ---
+from .plugins import AgentXPlugin, PluginManager, PluginMeta
 
 # --- Evaluation ---
 from .evaluation import (
@@ -89,6 +103,14 @@ from .tools.mcp import MCPConnection, MCPManager, MCPTool
 # --- Agent Patterns ---
 from .agents import RouterAgent, GuardrailAgent, SummarizationAgent, ClassifierAgent, RAGAgent
 
+# --- Daemon (24/7 Autonomous Operation) ---
+from .daemon import (
+    AgentXDaemon, DaemonConfig, run_daemon,
+    JobScheduler, JobConfig, JobType, JobStatus,
+    AgentXServer, WebhookHandler,
+    FileWatcher, FileEvent, FileEventType, MessageQueueWatcher,
+)
+
 # --- Database ---
 from .db import Database, create_database
 
@@ -101,7 +123,7 @@ __all__ = [
     "AgentContext", "AgentMessage", "MessageType", "Priority",
     "Orchestrator", "Pipeline",
     "BaseTool", "FunctionTool", "ToolResult", "tool",
-    "LLMConfig", "create_llm",
+    "LLMConfig", "StreamChunk", "create_llm",
     # Memory
     "AgentMemory", "ShortTermMemory", "LongTermMemory", "MemoryEntry",
     # RAG
@@ -124,6 +146,11 @@ __all__ = [
     # Security
     "RBACManager", "User", "Role", "Permission",
     "AuthGateway", "AuthResult", "InjectionGuard", "InjectionResult", "NamespaceManager", "JWTToken",
+    "ContentModerator", "ModerationConfig", "ModerationResult", "ModerationAction",
+    "VulnerabilityScanner", "VulnerabilityResult", "CategoryConfig", "Severity",
+    "TenantManager", "Tenant", "TenantConfig", "TenantPlan",
+    # Plugins
+    "AgentXPlugin", "PluginManager", "PluginMeta",
     # Evaluation
     "ResponseEvaluator", "HallucinationDetector", "CostTracker", "EvaluationResult",
     "RAGASEvaluator", "RAGASResult", "QueryAnalytics",
@@ -140,6 +167,11 @@ __all__ = [
     "MCPConnection", "MCPManager", "MCPTool",
     # Agent Patterns
     "RouterAgent", "GuardrailAgent", "SummarizationAgent", "ClassifierAgent", "RAGAgent",
+    # Daemon (24/7 Autonomous)
+    "AgentXDaemon", "DaemonConfig", "run_daemon",
+    "JobScheduler", "JobConfig", "JobType", "JobStatus",
+    "AgentXServer", "WebhookHandler",
+    "FileWatcher", "FileEvent", "FileEventType", "MessageQueueWatcher",
     # Database
     "Database", "create_database",
     # Utils

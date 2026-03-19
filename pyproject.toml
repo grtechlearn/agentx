@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentx"
-version = "0.2.0"
-description = "Enterprise Multi-Agent System Framework - Production-ready AI agents with Advanced RAG, RBAC, Self-Learning, Cost Management"
+version = "0.6.0"
+description = "Enterprise Multi-Agent System Framework - Production-ready AI agents with Advanced RAG, RBAC, Self-Learning, Cost Management, Autonomous 24/7 Daemon"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
@@ -45,10 +45,17 @@ postgres = ["asyncpg>=0.29"]
 redis = ["redis>=5.0"]
 mcp = ["mcp>=1.0"]
 
+[project.scripts]
+agentx-daemon = "agentx.daemon.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/grtechlearn/agentx"
 Repository = "https://github.com/grtechlearn/agentx"
 Issues = "https://github.com/grtechlearn/agentx/issues"
+Documentation = "https://github.com/grtechlearn/agentx/blob/main/docs/TECHNICAL_SPECIFICATION.md"
 
 [tool.setuptools.packages.find]
 include = ["agentx*"]
+
+[tool.setuptools.package-data]
+agentx = ["py.typed"]
