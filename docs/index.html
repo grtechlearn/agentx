@@ -960,6 +960,30 @@
                         <td><span class="cross">&#10007;</span> No</td>
                         <td><span class="cross">&#10007;</span> No</td>
                     </tr>
+                    <tr>
+                        <td>MCP Protocol</td>
+                        <td class="highlight"><span class="check">&#10003;</span> stdio/SSE/HTTP</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                    </tr>
+                    <tr>
+                        <td>A2A Protocol</td>
+                        <td class="highlight"><span class="check">&#10003;</span> Full</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                    </tr>
+                    <tr>
+                        <td>Dynamic Model Registry</td>
+                        <td class="highlight"><span class="check">&#10003;</span> Runtime</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                    </tr>
+                    <tr>
+                        <td>Vulnerability Scanning</td>
+                        <td class="highlight"><span class="check">&#10003;</span> 6 categories</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                        <td><span class="cross">&#10007;</span> No</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -1022,17 +1046,42 @@
             <div class="feature-card">
                 <div class="feature-icon">&#128268;</div>
                 <h3>Plugin System</h3>
-                <p>Extend agents with custom tools, APIs, and integrations through a clean plugin API.</p>
+                <p>Extend agents with custom tools, APIs, and integrations through a clean plugin API with auto-discovery.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">&#127970;</div>
                 <h3>Multi-Tenancy</h3>
-                <p>Isolated tenants with separate configs, data, and billing. SaaS-ready from day one.</p>
+                <p>Isolated tenants with 4 plans (Free/Starter/Pro/Enterprise), per-tenant rate limits, budget caps.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">&#128202;</div>
                 <h3>Admin Dashboard</h3>
-                <p>Monitor agents, users, costs, and system health through a built-in web dashboard.</p>
+                <p>Monitor agents, jobs, costs, and health through a built-in zero-dependency web dashboard.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128279;</div>
+                <h3>MCP Support</h3>
+                <p>Connect to any MCP tool server via stdio, SSE, or streamable-HTTP transports.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#129309;</div>
+                <h3>A2A Protocol</h3>
+                <p>Google Agent-to-Agent interop: discover, call, and integrate external agents automatically.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128260;</div>
+                <h3>Dynamic Model Registry</h3>
+                <p>Add any new LLM model at runtime with register_model(). Future-proof, no framework changes needed.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128203;</div>
+                <h3>RAGAS Evaluation</h3>
+                <p>Built-in faithfulness, relevance, context recall scoring with MRR, nDCG, Precision@K metrics.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128736;</div>
+                <h3>Vulnerability Scanner</h3>
+                <p>Detect credential exposure, code injection, unsafe URLs, and insecure patterns in content.</p>
             </div>
         </div>
     </div>
@@ -1124,7 +1173,7 @@ agent = Agent(
             <div class="arch-diagram">
                 <div class="arch-layer" style="border-color: rgba(79,110,247,0.4);">
                     <div class="arch-layer-title">API Layer</div>
-                    <div class="arch-layer-items">REST Endpoints &middot; WebSocket &middot; SSE Streaming &middot; JWT Auth Middleware</div>
+                    <div class="arch-layer-items">REST Endpoints &middot; WebSocket &middot; SSE Streaming &middot; A2A Protocol &middot; JWT Auth</div>
                 </div>
                 <div class="arch-arrow">&darr;</div>
                 <div class="arch-layer" style="border-color: rgba(139,92,246,0.4);">
@@ -1134,7 +1183,7 @@ agent = Agent(
                 <div class="arch-arrow">&darr;</div>
                 <div class="arch-layer" style="border-color: rgba(6,182,212,0.4);">
                     <div class="arch-layer-title">Agent Layer</div>
-                    <div class="arch-layer-items">Agent Core &middot; Tool Registry &middot; Plugin System &middot; Memory &amp; RAG</div>
+                    <div class="arch-layer-items">Agent Core &middot; MCP Tools &middot; Plugin System &middot; Memory &amp; RAG</div>
                 </div>
                 <div class="arch-arrow">&darr;</div>
                 <div class="arch-layer" style="border-color: rgba(34,197,94,0.4);">
@@ -1160,28 +1209,28 @@ agent = Agent(
         </div>
         <div class="stats-grid fade-in fade-in-delay-1">
             <div class="stat-card">
-                <div class="stat-number">360+</div>
+                <div class="stat-number">406</div>
                 <div class="stat-label">Tests Passing</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">60+</div>
-                <div class="stat-label">Modules</div>
+                <div class="stat-number">61</div>
+                <div class="stat-label">Python Modules</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">5</div>
+                <div class="stat-number">5+</div>
                 <div class="stat-label">LLM Providers</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">14</div>
+                <div class="stat-number">19</div>
                 <div class="stat-label">API Endpoints</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">100+</div>
-                <div class="stat-label">Config Options</div>
+                <div class="stat-number">17K+</div>
+                <div class="stat-label">Lines of Code</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">~50MB</div>
-                <div class="stat-label">RAM Usage</div>
+                <div class="stat-number">2</div>
+                <div class="stat-label">Protocols (MCP + A2A)</div>
             </div>
         </div>
     </div>
