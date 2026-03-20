@@ -2060,9 +2060,18 @@ agentx/
     scheduler.py           # JobScheduler, JobConfig, Job, JobRun
     server.py              # AgentXServer, WebhookHandler, APIResponse
     watcher.py             # FileWatcher, MessageQueueWatcher
+  protocols/
+    __init__.py
+    a2a.py                 # AgentCard, A2AServer, A2AClient (Google A2A Protocol)
+  plugins/
+    __init__.py            # AgentXPlugin, PluginManager, PluginMeta
+  dashboard/
+    __init__.py            # get_dashboard_path()
+    index.html             # Admin web dashboard (single-file, zero deps)
   utils/
     __init__.py
-    logging.py             # setup_logging
+    logging.py             # setup_logging, JSONFormatter, PrettyFormatter
+    logger.py              # Legacy logging utilities
     metrics.py             # metrics utilities
 ```
 
@@ -2070,19 +2079,22 @@ agentx/
 
 | Category | Count |
 |----------|-------|
-| Python modules | 35+ |
-| Classes | 80+ |
-| Pydantic models | 40+ |
-| Enums | 15+ |
+| Python modules | 61 |
+| Classes | 100+ |
+| Pydantic models | 50+ |
+| Enums | 18+ |
 | Database tables | 13 |
-| API endpoints | 12 |
+| API endpoints | 14 REST + 4 A2A + 1 WebSocket |
 | Configuration options | 100+ |
 | Pre-built agents | 10 |
 | Security patterns (regex) | 50+ |
-| Supported LLM providers | 2 (Anthropic, OpenAI) |
+| Supported LLM providers | 5 (Anthropic, OpenAI, Ollama, Groq, Gemini) + dynamic registry |
 | Supported vector stores | 4 (Qdrant, Chroma, Pinecone, local) |
 | Supported embedders | 3 (Anthropic/Voyage, OpenAI, local) |
 | Supported databases | 2 (SQLite, PostgreSQL) |
+| Supported protocols | 2 (MCP, A2A) |
+| Tests | 406 across 10 test files |
+| Lines of code | 17,000+ |
 
 ---
 
