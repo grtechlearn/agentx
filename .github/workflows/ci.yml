@@ -29,9 +29,9 @@ jobs:
 
       - name: Import checks
         run: |
-          python -c "import agentx"
-          python -c "from agentx.core import Agent"
-          python -c "from agentx.config import AgentConfig"
+          python -c "import agentx; print(f'AgentX v{agentx.__version__}')"
+          python -c "from agentx.core import BaseAgent, Orchestrator, create_llm"
+          python -c "from agentx.config import AgentXConfig"
 
       - name: Run tests
         run: pytest tests/ -v
