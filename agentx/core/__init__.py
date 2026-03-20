@@ -1,6 +1,10 @@
 from .agent import BaseAgent, SimpleAgent, AgentConfig, AgentState
 from .context import AgentContext
-from .llm import BaseLLMProvider, LLMConfig, LLMResponse, StreamChunk, AnthropicProvider, OpenAIProvider, create_llm
+from .llm import (
+    BaseLLMProvider, LLMConfig, LLMResponse, StreamChunk,
+    AnthropicProvider, OpenAIProvider, create_llm,
+    LLMRegistry, get_registry, register_provider, register_model, register_openai_compatible,
+)
 from .providers import OllamaProvider, GroqProvider, GeminiProvider
 from .message import AgentMessage, MessageType, Priority
 from .orchestrator import Orchestrator, Route, Pipeline
@@ -22,6 +26,11 @@ __all__ = [
     "GroqProvider",
     "GeminiProvider",
     "create_llm",
+    "LLMRegistry",
+    "get_registry",
+    "register_provider",
+    "register_model",
+    "register_openai_compatible",
     "AgentMessage",
     "MessageType",
     "Priority",

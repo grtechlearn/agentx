@@ -470,24 +470,319 @@ class OpenAIProvider(BaseLLMProvider):
         return json.loads(text)
 
 
+class LLMRegistry:
+    """
+    Dynamic LLM provider and model registry.
+
+    Register custom providers and model aliases at runtime.
+    Projects can add their own LLM backends without modifying AgentX source.
+
+    Usage:
+        # Register a custom provider
+        registry = LLMRegistry.default()
+        registry.register_provider("my-llm", MyCustomProvider)
+
+        # Register model aliases (shortcuts)
+        registry.register_model("fast", provider="groq", model="llama-3.3-70b-versatile")
+        registry.register_model("local", provider="ollama", model="llama3.2")
+        registry.register_model("cheap", provider="anthropic", model="claude-haiku-4-5-20251001")
+        registry.register_model("smart", provider="anthropic", model="claude-opus-4-6")
+
+        # Use aliases
+        llm = registry.create("fast")         # -> GroqProvider with llama-3.3-70b
+        llm = registry.create("local")        # -> OllamaProvider with llama3.2
+        llm = registry.create("cheap")        # -> AnthropicProvider with haiku
+
+        # Register an OpenAI-compatible endpoint
+        registry.register_openai_compatible(
+            name="together",
+            base_url="https://api.together.xyz/v1",
+            api_key_env="TOGETHER_API_KEY",
+            default_model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        )
+        llm = registry.create("together")
+
+        # List everything
+        registry.list_providers()   # ['anthropic', 'openai', 'ollama', 'groq', 'gemini', ...]
+        registry.list_models()      # ['fast', 'local', 'cheap', 'smart', ...]
+    """
+
+    def __init__(self):
+        self._providers: dict[str, type[BaseLLMProvider]] = {}
+        self._model_aliases: dict[str, dict[str, Any]] = {}
+        self._openai_compatible: dict[str, dict[str, str]] = {}
+
+    @classmethod
+    def default(cls) -> LLMRegistry:
+        """Create a registry with all built-in providers."""
+        from .providers import OllamaProvider, GroqProvider, GeminiProvider
+
+        reg = cls()
+        # Built-in providers
+        reg._providers = {
+            "anthropic": AnthropicProvider,
+            "claude": AnthropicProvider,
+            "openai": OpenAIProvider,
+            "gpt": OpenAIProvider,
+            "ollama": OllamaProvider,
+            "groq": GroqProvider,
+            "gemini": GeminiProvider,
+            "google": GeminiProvider,
+        }
+        # Built-in model aliases
+        reg._model_aliases = {
+            "opus": {"provider": "anthropic", "model": "claude-opus-4-6"},
+            "sonnet": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "haiku": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "gpt4o": {"provider": "openai", "model": "gpt-4o"},
+            "gpt4o-mini": {"provider": "openai", "model": "gpt-4o-mini"},
+            "llama3": {"provider": "ollama", "model": "llama3.2"},
+            "mistral": {"provider": "ollama", "model": "mistral"},
+            "deepseek": {"provider": "ollama", "model": "deepseek-r1"},
+            "qwen": {"provider": "ollama", "model": "qwen2.5"},
+            "groq-llama": {"provider": "groq", "model": "llama-3.3-70b-versatile"},
+            "groq-mixtral": {"provider": "groq", "model": "mixtral-8x7b-32768"},
+            "gemini-flash": {"provider": "gemini", "model": "gemini-2.0-flash"},
+            "gemini-pro": {"provider": "gemini", "model": "gemini-1.5-pro"},
+        }
+        return reg
+
+    # --- Provider Registration ---
+
+    def register_provider(
+        self,
+        name: str,
+        provider_class: type[BaseLLMProvider],
+    ) -> None:
+        """Register a custom LLM provider class."""
+        self._providers[name.lower()] = provider_class
+        logger.info(f"Registered LLM provider: {name}")
+
+    def register_openai_compatible(
+        self,
+        name: str,
+        base_url: str,
+        api_key_env: str = "",
+        api_key: str = "",
+        default_model: str = "",
+    ) -> None:
+        """
+        Register any OpenAI-compatible API endpoint as a provider.
+
+        Works with: Together AI, Fireworks, Anyscale, vLLM, LiteLLM,
+        Azure OpenAI, DeepInfra, Perplexity, and any OpenAI-compatible server.
+        """
+        import os
+        self._openai_compatible[name.lower()] = {
+            "base_url": base_url,
+            "api_key": api_key or os.environ.get(api_key_env, ""),
+            "default_model": default_model,
+        }
+        # Also register as a provider alias
+        self._providers[name.lower()] = OpenAIProvider
+        logger.info(f"Registered OpenAI-compatible provider: {name} -> {base_url}")
+
+    # --- Model Aliases ---
+
+    def register_model(
+        self,
+        alias: str,
+        provider: str,
+        model: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        api_key: str = "",
+        base_url: str = "",
+        **extra: Any,
+    ) -> None:
+        """
+        Register a model alias (shortcut name).
+
+        Usage:
+            registry.register_model("fast", provider="groq", model="llama-3.3-70b-versatile")
+            llm = registry.create("fast")
+        """
+        alias_config: dict[str, Any] = {"provider": provider, "model": model}
+        if temperature is not None:
+            alias_config["temperature"] = temperature
+        if max_tokens is not None:
+            alias_config["max_tokens"] = max_tokens
+        if api_key:
+            alias_config["api_key"] = api_key
+        if base_url:
+            alias_config["base_url"] = base_url
+        alias_config.update(extra)
+        self._model_aliases[alias.lower()] = alias_config
+        logger.info(f"Registered model alias: {alias} -> {provider}:{model}")
+
+    def unregister_model(self, alias: str) -> bool:
+        """Remove a model alias."""
+        return self._model_aliases.pop(alias.lower(), None) is not None
+
+    # --- Create LLM ---
+
+    def create(
+        self,
+        provider_or_alias: str = "anthropic",
+        model: str = "",
+        api_key: str = "",
+        base_url: str = "",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ) -> BaseLLMProvider:
+        """
+        Create an LLM provider instance.
+
+        Can be called with:
+        - Provider name: create("anthropic", model="claude-sonnet-4-6")
+        - Model alias: create("fast") or create("haiku")
+        - OpenAI-compatible name: create("together", model="...")
+        """
+        key = provider_or_alias.lower()
+
+        # 1. Check model aliases first
+        if key in self._model_aliases:
+            alias_cfg = self._model_aliases[key]
+            return self.create(
+                provider_or_alias=alias_cfg["provider"],
+                model=alias_cfg.get("model", model),
+                api_key=alias_cfg.get("api_key", api_key),
+                base_url=alias_cfg.get("base_url", base_url),
+                temperature=alias_cfg.get("temperature", temperature),
+                max_tokens=alias_cfg.get("max_tokens", max_tokens),
+            )
+
+        # 2. Check OpenAI-compatible endpoints
+        if key in self._openai_compatible:
+            compat = self._openai_compatible[key]
+            config = LLMConfig(
+                provider=key,
+                model=model or compat.get("default_model", ""),
+                api_key=api_key or compat.get("api_key", ""),
+                base_url=base_url or compat.get("base_url", ""),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return OpenAIProvider(config)
+
+        # 3. Check registered providers
+        provider_cls = self._providers.get(key)
+        if not provider_cls:
+            raise ValueError(
+                f"Unknown provider or alias: '{provider_or_alias}'. "
+                f"Available providers: {self.list_providers()}. "
+                f"Available aliases: {self.list_models()}"
+            )
+
+        config = LLMConfig(
+            provider=key,
+            model=model or "claude-sonnet-4-6",
+            api_key=api_key,
+            base_url=base_url or None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return provider_cls(config)
+
+    def create_from_config(self, config: LLMConfig) -> BaseLLMProvider:
+        """Create an LLM from an LLMConfig object."""
+        return self.create(
+            provider_or_alias=config.provider,
+            model=config.model,
+            api_key=config.api_key,
+            base_url=config.base_url or "",
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+        )
+
+    # --- Info ---
+
+    def list_providers(self) -> list[str]:
+        """List all registered provider names."""
+        return sorted(set(self._providers.keys()))
+
+    def list_models(self) -> list[dict[str, str]]:
+        """List all registered model aliases with their provider and model."""
+        return [
+            {"alias": alias, "provider": cfg["provider"], "model": cfg["model"]}
+            for alias, cfg in sorted(self._model_aliases.items())
+        ]
+
+    def list_openai_compatible(self) -> list[dict[str, str]]:
+        """List all OpenAI-compatible endpoints."""
+        return [
+            {"name": name, "base_url": cfg["base_url"], "default_model": cfg.get("default_model", "")}
+            for name, cfg in sorted(self._openai_compatible.items())
+        ]
+
+    def get_model_config(self, alias: str) -> dict[str, Any] | None:
+        """Get the config for a model alias."""
+        return self._model_aliases.get(alias.lower())
+
+    def summary(self) -> dict[str, Any]:
+        """Full registry summary."""
+        return {
+            "providers": self.list_providers(),
+            "model_aliases": self.list_models(),
+            "openai_compatible": self.list_openai_compatible(),
+            "total_providers": len(set(self._providers.values())),
+            "total_aliases": len(self._model_aliases),
+        }
+
+
+# Global default registry (singleton)
+_default_registry: LLMRegistry | None = None
+
+
+def get_registry() -> LLMRegistry:
+    """Get the global LLM registry (creates on first call)."""
+    global _default_registry
+    if _default_registry is None:
+        _default_registry = LLMRegistry.default()
+    return _default_registry
+
+
+def register_provider(name: str, provider_class: type[BaseLLMProvider]) -> None:
+    """Register a custom LLM provider globally."""
+    get_registry().register_provider(name, provider_class)
+
+
+def register_model(alias: str, provider: str, model: str, **kwargs: Any) -> None:
+    """Register a model alias globally."""
+    get_registry().register_model(alias, provider, model, **kwargs)
+
+
+def register_openai_compatible(name: str, base_url: str, **kwargs: Any) -> None:
+    """Register an OpenAI-compatible endpoint globally."""
+    get_registry().register_openai_compatible(name, base_url, **kwargs)
+
+
 def create_llm(config: LLMConfig | None = None, **kwargs: Any) -> BaseLLMProvider:
-    """Factory to create LLM provider."""
-    if config is None:
-        config = LLMConfig(**kwargs)
+    """
+    Factory to create LLM provider.
 
-    from .providers import OllamaProvider, GroqProvider, GeminiProvider
+    Supports:
+    - Provider names: "anthropic", "openai", "ollama", "groq", "gemini"
+    - Model aliases: "haiku", "sonnet", "opus", "llama3", "gemini-flash"
+    - Custom registered providers and aliases
+    - OpenAI-compatible endpoints
 
-    providers = {
-        "anthropic": AnthropicProvider,
-        "claude": AnthropicProvider,
-        "openai": OpenAIProvider,
-        "gpt": OpenAIProvider,
-        "ollama": OllamaProvider,
-        "groq": GroqProvider,
-        "gemini": GeminiProvider,
-        "google": GeminiProvider,
-    }
-    provider_cls = providers.get(config.provider.lower())
-    if not provider_cls:
-        raise ValueError(f"Unknown provider: {config.provider}. Supported: {list(providers.keys())}")
-    return provider_cls(config)
+    Usage:
+        # By provider
+        llm = create_llm(provider="anthropic", model="claude-sonnet-4-6")
+
+        # By alias
+        llm = create_llm(provider="haiku")
+        llm = create_llm(provider="groq-llama")
+
+        # From config
+        llm = create_llm(LLMConfig(provider="ollama", model="llama3.2"))
+    """
+    registry = get_registry()
+
+    if config is not None:
+        return registry.create_from_config(config)
+
+    provider = kwargs.pop("provider", "anthropic")
+    return registry.create(provider_or_alias=provider, **kwargs)

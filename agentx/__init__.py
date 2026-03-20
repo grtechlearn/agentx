@@ -35,7 +35,8 @@ from .core import (
     AgentContext, AgentMessage, MessageType, Priority,
     Orchestrator, Pipeline,
     BaseTool, FunctionTool, ToolResult, tool,
-    LLMConfig, create_llm,
+    LLMConfig, StreamChunk, create_llm,
+    LLMRegistry, get_registry, register_provider, register_model, register_openai_compatible,
     OllamaProvider, GroqProvider, GeminiProvider,
 )
 
@@ -125,6 +126,7 @@ __all__ = [
     "Orchestrator", "Pipeline",
     "BaseTool", "FunctionTool", "ToolResult", "tool",
     "LLMConfig", "StreamChunk", "create_llm",
+    "LLMRegistry", "get_registry", "register_provider", "register_model", "register_openai_compatible",
     "OllamaProvider", "GroqProvider", "GeminiProvider",
     # Memory
     "AgentMemory", "ShortTermMemory", "LongTermMemory", "MemoryEntry",
