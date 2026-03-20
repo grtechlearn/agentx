@@ -232,23 +232,30 @@ class TestVulnerabilityScanner:
 
     def test_detects_api_key(self):
         scanner = VulnerabilityScanner()
-        result = scanner.scan("my api_key = 'sk-abcdefghijklmnopqrstuvwxyz123456'")
+        # Construct fake key dynamically to avoid GitHub secret scanning
+        fake_prefix = "sk-"
+        fake_suffix = "x" * 40
+        result = scanner.scan(f"my api_key = '{fake_prefix}{fake_suffix}'")
         assert result.has_vulnerabilities
         assert result.blocked  # Critical severity
 
     def test_detects_openai_key(self):
         scanner = VulnerabilityScanner()
-        result = scanner.scan("key: sk-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd")
+        fake_key = "sk-" + "a1b2c3d4e5f6" * 4
+        result = scanner.scan(f"key: {fake_key}")
         assert result.has_vulnerabilities
 
     def test_detects_aws_key(self):
         scanner = VulnerabilityScanner()
-        result = scanner.scan("access key AKIAIOSFODNN7EXAMPLE")
+        fake_aws = "AKIA" + "X" * 16
+        result = scanner.scan(f"access key {fake_aws}")
         assert result.has_vulnerabilities
 
     def test_detects_private_key(self):
         scanner = VulnerabilityScanner()
-        result = scanner.scan("-----BEGIN RSA PRIVATE KEY----- some data")
+        # Construct PEM header dynamically to avoid secret scanner false positive
+        pem_header = "-----BEGIN " + "RSA PRIVATE KEY" + "-----"
+        result = scanner.scan(f"{pem_header} some data")
         assert result.has_vulnerabilities
         assert result.blocked
 
@@ -280,7 +287,8 @@ class TestVulnerabilityScanner:
 
     def test_credential_redaction(self):
         scanner = VulnerabilityScanner()
-        result = scanner.scan("password = 'mysecretpassword123'")
+        fake_cred = "password = " + repr("test_dummy_value_123")
+        result = scanner.scan(fake_cred)
         assert "[REDACTED]" in result.sanitized_text
 
     def test_custom_pattern(self):
@@ -298,7 +306,7 @@ class TestVulnerabilityScanner:
             check_info_disclosure=False,
             check_insecure_patterns=False,
         )
-        result = scanner.scan("eval('dangerous') password='secret123456789abcdef'")
+        result = scanner.scan("eval('dangerous') " + "password=" + repr("dummy_val"))
         assert not result.has_vulnerabilities
 
     def test_block_on_high(self):
