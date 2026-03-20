@@ -19,6 +19,7 @@ Features:
 - Content Moderation (profanity, abuse, sexual content filtering — configurable)
 - Vulnerability Scanning (credential exposure, code injection, unsafe URLs)
 - MCP Support (connect to any MCP tool server)
+- A2A Protocol (Google's Agent-to-Agent discovery and communication)
 - Autonomous 24/7 Daemon (scheduler, API server, file watchers, watchdog)
 - HTTP/WebSocket API Server (REST + real-time agent communication)
 - Job Scheduling (interval, cron, delayed, event-triggered)
@@ -102,6 +103,9 @@ from .scaling import (
 # --- MCP ---
 from .tools.mcp import MCPConnection, MCPManager, MCPTool
 
+# --- A2A (Agent-to-Agent Protocol) ---
+from .protocols.a2a import AgentCard, A2AServer, A2AClient
+
 # --- Agent Patterns ---
 from .agents import RouterAgent, GuardrailAgent, SummarizationAgent, ClassifierAgent, RAGAgent
 
@@ -169,6 +173,8 @@ __all__ = [
     "HealthCheck",
     # MCP
     "MCPConnection", "MCPManager", "MCPTool",
+    # A2A (Agent-to-Agent Protocol)
+    "AgentCard", "A2AServer", "A2AClient",
     # Agent Patterns
     "RouterAgent", "GuardrailAgent", "SummarizationAgent", "ClassifierAgent", "RAGAgent",
     # Daemon (24/7 Autonomous)
